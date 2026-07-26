@@ -1,0 +1,46 @@
+# BidPilot company profile — copy to company_profile.yaml and fill in real data.
+# This drives eligibility checks, cost estimation, and form pre-fill.
+
+name: "Example Federal Solutions LLC"
+uei: "ABC123DEF456"          # SAM.gov Unique Entity ID
+cage_code: "1A2B3"
+address: "123 Main St, Suite 400, Arlington, VA 22201"
+poc_name: "Jordan Rivera"
+poc_email: "jrivera@examplefedsol.com"
+poc_phone: "(703) 555-0142"
+
+naics_codes:
+  - "541511"   # Custom Computer Programming Services
+  - "541512"   # Computer Systems Design Services
+
+small_business: true
+socioeconomic_certifications:
+  - "SDVOSB"
+sam_registration_active: true
+facility_clearance: null      # e.g. "Secret" or null
+
+capabilities:
+  - "Full-stack web application development (Python, TypeScript, AWS GovCloud)"
+  - "Data engineering and analytics pipelines"
+  - "Agile software delivery (SAFe, Scrum) for federal customers"
+  - "Section 508 accessibility remediation"
+
+past_performance:
+  - "GSA — Data platform modernization, $1.8M, 2023-2025, prime, CPARS Exceptional"
+  - "VA — Claims-processing web portal sustainment, $950K, 2022-2024, subcontractor"
+
+key_personnel:
+  - "Jordan Rivera — Program Manager, PMP, 12 yrs federal delivery"
+  - "Sam Okafor — Lead Engineer, AWS Solutions Architect Pro, 10 yrs"
+
+labor_categories:
+  - title: "Program Manager"
+    hourly_rate: 165.00
+  - title: "Senior Software Engineer"
+    hourly_rate: 150.00
+  - title: "Software Engineer"
+    hourly_rate: 120.00
+  - title: "DevSecOps Engineer"
+    hourly_rate: 140.00
+  - title: "UX Designer"
+    hourly_rate: 115.00
