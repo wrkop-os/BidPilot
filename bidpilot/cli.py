@@ -140,19 +140,18 @@ def _run(args, analyst_only: bool) -> int:
         return 1
 
     if analyst_only:
-        # Phase-1 mode: run through eligibility + shredding + submission only.
-        for stage in (Stage.STRATEGY, Stage.PRODUCE, Stage.ASSEMBLE, Stage.QA, Stage.EXPORT):
-            if stage not in ctx.state.completed_stages:
-                ctx.state.completed_stages.append(stage)
-        # Submission sheet is part of the analyst deliverable:
+        # Phase-1 mode: stop after the shredder — no drafting, no pricing.
+        # stop_after leaves the checkpoint truthful, so a later full
+        # `bidpilot run` continues from strategy instead of skipping stages.
         from .agents.submission import extract_submission
 
         try:
-            state = run(ctx)
+            state = run(ctx, stop_after=Stage.SHRED)
             if state.notice and state.doc_tree and not state.halted_reason:
-                state.submission_sheet = extract_submission(
-                    ctx.router, state.notice.metadata, state.doc_tree
-                )
+                if state.submission_sheet is None:
+                    state.submission_sheet = extract_submission(
+                        ctx.router, state.notice.metadata, state.doc_tree
+                    )
                 from .assembly import write_stage_artifacts
 
                 write_stage_artifacts(state)

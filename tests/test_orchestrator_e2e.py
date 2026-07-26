@@ -284,6 +284,79 @@ def test_capability_statement_path(tmp_path):
     assert any("Capability_Statement" in n for n in rendered_names)
 
 
+def test_resume_after_gate_decline_reasks_and_completes(tmp_path):
+    """Regression: a declined gate must not wedge the run forever. A fresh
+    invocation clears the halt, re-asks the unapproved gate, and continues."""
+    ctx1 = _make_ctx(tmp_path)
+    ctx1.confirm = lambda q: "proceed to bid" not in q
+    s1 = run(ctx1)
+    assert s1.halted_reason == "gate_declined:bid_no_bid"
+    assert not s1.is_done(Stage.SHRED)
+
+    ctx2 = _make_ctx(tmp_path)  # reloads checkpoint; approves everything
+    s2 = run(ctx2)
+    assert s2.halted_reason is None
+    assert s2.export_path and Path(s2.export_path).exists()
+    # The gate was re-asked and the decision recorded both times.
+    bid_decisions = [a.approved for a in s2.approvals if a.gate == "bid_no_bid"]
+    assert bid_decisions == [False, True]
+
+
+def test_analyze_stop_after_leaves_checkpoint_truthful(tmp_path):
+    """Regression: Analyst-MVP mode must not mark unexecuted stages complete —
+    a later full run continues from strategy instead of skipping everything."""
+    ctx1 = _make_ctx(tmp_path)
+    s1 = run(ctx1, stop_after=Stage.SHRED)
+    assert s1.is_done(Stage.SHRED)
+    assert not s1.is_done(Stage.STRATEGY) and not s1.is_done(Stage.EXPORT)
+    assert s1.halted_reason is None
+
+    ctx2 = _make_ctx(tmp_path)
+    calls_before = len(ctx2.router.calls)
+    s2 = run(ctx2)
+    assert s2.export_path and Path(s2.export_path).exists()
+    # Analyst stages were NOT re-run (no shred/classify calls), only the rest.
+    stages_called = {stage for stage, _ in ctx2.router.calls[calls_before:]}
+    assert not any(s and s.startswith("shred") for s in stages_called)
+    assert any(s == "strategy" for s in stages_called)
+
+
+def test_stage_internal_halt_not_marked_done(tmp_path):
+    """Regression: a stage that halts (CUI/ITAR) is not marked done, so a
+    resume re-runs it and re-asks — the guard is re-evaluated, never bypassed."""
+
+    class CuiSam(FakeSam):
+        def notice_metadata(self, notice_id):
+            meta = super().notice_metadata(notice_id)
+            meta.description_text = (
+                "CONTROLLED UNCLASSIFIED INFORMATION\n" + meta.description_text
+            )
+            return meta
+
+    ctx1 = _make_ctx(tmp_path)
+    ctx1.sam = CuiSam()
+    asked = []
+
+    def decline_cui(question):
+        asked.append(question)
+        return "Continue anyway?" not in question
+
+    ctx1.confirm = decline_cui
+    s1 = run(ctx1)
+    assert s1.halted_reason == "cui_itar_detected"
+    assert s1.is_done(Stage.INTAKE)
+    assert not s1.is_done(Stage.DOCPROC)  # halting stage never marked done
+    assert any("Continue anyway?" in q for q in asked)
+
+    # Resume with an operator override: docproc re-runs, re-asks, continues.
+    ctx2 = _make_ctx(tmp_path)
+    ctx2.sam = CuiSam()
+    s2 = run(ctx2)
+    assert s2.halted_reason is None
+    assert s2.is_done(Stage.DOCPROC)
+    assert s2.export_path
+
+
 def test_export_blocked_on_hard_qa_failure(tmp_path):
     class FabricatingRouter(FakeRouter):
         def structured(self, tier, **kw):

@@ -85,27 +85,62 @@ def new_run(url_or_id: str, output_root: Path) -> tuple[ProposalState, Checkpoin
     return state, checkpoints
 
 
-def run(ctx: RunContext) -> ProposalState:
+def run(ctx: RunContext, stop_after: Optional[Stage] = None) -> ProposalState:
+    """Execute the graph from the last checkpoint.
+
+    Halt semantics: every halt is re-evaluated, never bypassed, on the next
+    invocation — declined gates re-ask (the gate re-check below), and
+    stage-internal halts (CUI/ITAR, no-response notices, blocked export)
+    re-fire because a halting stage is never marked done. A fresh `run` is
+    the operator's signal to reconsider, so any stored halt is cleared here.
+    """
+    state = ctx.state
+    if state.halted_reason:
+        ctx.audit.record("halt_cleared_on_resume", actor="orchestrator",
+                         detail=state.halted_reason)
+        state.halted_reason = None
+
     for node in build_graph():
-        state = ctx.state
         if state.halted_reason:
             break
         if state.is_done(node.stage):
+            # Resume path: a completed stage whose gate was never approved
+            # (declined last run, or crash between stage and gate) must
+            # re-ask — skipping the stage must never skip the gate.
+            if node.gate_after and not _gate_approved(state, node.gate_after):
+                if not _gate(ctx, node.gate_after):
+                    break
+            if stop_after and node.stage == stop_after:
+                break
             continue
         ctx.console.print(f"[bold]▶ {node.stage.value}[/bold]")
         ctx.audit.record("stage_start", actor="orchestrator", stage=node.stage.value)
         node.fn(ctx)
+        if state.halted_reason:
+            # The stage itself halted (CUI/ITAR, no-response notice, blocked
+            # export): do NOT mark it done — resume must re-run it so the
+            # halt condition is re-evaluated.
+            write_stage_artifacts(state)
+            ctx.checkpoints.save(state)
+            ctx.audit.record("stage_halted", actor="orchestrator", stage=node.stage.value,
+                             detail=state.halted_reason)
+            break
         state.mark_done(node.stage)
         write_stage_artifacts(state)
         ctx.checkpoints.save(state)
         ctx.audit.record("stage_complete", actor="orchestrator", stage=node.stage.value)
-        if state.halted_reason:
-            break
         if node.gate_after:
             if not _gate(ctx, node.gate_after):
                 break
+        if stop_after and node.stage == stop_after:
+            break
     ctx.checkpoints.save(ctx.state)
     return ctx.state
+
+
+def _gate_approved(state: ProposalState, gate: str) -> bool:
+    approval = state.approval_for(gate)
+    return approval is not None and approval.approved
 
 
 def invalidate_for_amendment(state: ProposalState) -> list[Stage]:
