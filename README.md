@@ -19,8 +19,9 @@ SAM.gov URL
   ▼
 intake ──────── A1: Opportunities API v2, attachment download, FULL amendment chain
   ▼             (bidding off a stale version is a classic fatal error)
-docproc ─────── A2: parsing ladder (pypdf → pdfplumber tables → OCR flag), UCF A–M
-  ▼             section detection, XLSX kept fillable, CUI/ITAR halt path
+docproc ─────── A2: parsing ladder (pypdf → pdfplumber tables → vision-LLM OCR of
+  ▼             image-only pages), UCF A–M section detection, XLSX kept fillable,
+  ▼             CUI/ITAR halt path; amendment diff + "what changed" report on re-runs
 classify ────── A3: notice type / FAR regime / required artifact; fast model + rules,
   ▼             low confidence escalates to frontier; AI-disclosure clause detection
 eligibility ─── A4: §2.3 checklist. Deterministic evidence: SBA size-standard lookup,
@@ -31,14 +32,17 @@ shred ───────── A5: 3-pass compliance shredder — overlapping
 strategy ────── A6: win strategy; every assumption surfaced, never silently guessed
   ◆ CHECKPOINT: assumptions
 produce ─────── parallel swarm: A7 section writers (cite-or-[NEEDS INPUT], per L-outline)
-  ▼             A8 past performance · A9 pricing · A10 forms · A11 submission sheet + ICS
-assemble ────── volumes merged per L, claims→source map, government XLSX template copied
-  ▼             fillable & untouched
-qa ──────────── A12: deterministic checks in code (coverage, fail-closed citations, page
-  ▼             limits, WD re-assert) + bounded fix loop (max 2) + LLM audits (consistency,
-  ▼             citation sampling) + mock evaluation vs Section M
+  ▼             A8 past performance · A9 pricing (incl. filling the government's own
+  ▼             XLSX template on a copy) · A10 forms (fillable-PDF admin prefill)
+  ▼             A11 submission sheet + ICS
+  ▼             — or, for a Sources Sought: a cited 2–5 page capability statement
+assemble ────── volumes rendered to DOCX (+ PDF via LibreOffice when present, with
+  ▼             EXACT page counts), named per convention; claims→source map
+qa ──────────── A12: deterministic checks in code (coverage, fail-closed citations,
+  ▼             renderer-owned page limits, WD re-assert) + bounded fix loop (max 2,
+  ▼             re-renders after redrafts) + LLM audits + mock evaluation vs Section M
   ◆ HUMAN GATE #2: final package — export BLOCKED while hard failures open
-export ──────── versioned ZIP + manifest + audit bundle
+export ──────── versioned ZIP + manifest + audit bundle + cost telemetry (NFR-2)
 ```
 
 ### The pricing engine (PRD §9)
@@ -72,6 +76,13 @@ bidpilot interview                 # onboarding agent: what the KB is still miss
 ## Usage
 
 ```bash
+# Environment / contract checks first (add --network to ping the SAM API, NFR-3)
+bidpilot doctor
+
+# Proactive discovery (Phase 5.1): recent notices matching your NAICS codes,
+# pre-screened deterministically (set-aside vs certs, size standard, deadline)
+bidpilot discover --days 7
+
 # Phase-1 "Analyst MVP": bid/no-bid in minutes — eligibility report,
 # compliance matrix, submission sheet. No drafting, no pricing.
 bidpilot analyze "https://sam.gov/opp/<notice-id>/view"
@@ -79,8 +90,16 @@ bidpilot analyze "https://sam.gov/opp/<notice-id>/view"
 # Full pipeline (resumes from the last checkpoint automatically)
 bidpilot run "https://sam.gov/opp/<notice-id>/view" --actor "jrivera"
 
-# Solicitation amended? Invalidate downstream stages, then re-run (FR-4)
+# Solicitation amended? Archive docs, invalidate, re-run → AMENDMENT_REPORT.md
+# with per-document diffs and a "what to re-review" checklist (FR-4)
 bidpilot amend <notice-id> && bidpilot run <notice-id>
+
+# Estimator review loop (§9.7): edit hours in runs/<id>/pricing/pricing_model.json,
+# then recompute every downstream number deterministically — no LLM calls
+bidpilot reprice <notice-id>
+
+# Per-stage / per-model spend for a run vs the NFR-2 $25 budget
+bidpilot costs <notice-id>
 
 # Non-interactive gates (CI/testing — still never signs or submits)
 bidpilot run <notice-id> --yes
@@ -97,7 +116,13 @@ Each run lives in `runs/<notice_id>/`:
 | `pricing/` — priced lines CSV, BOE, pricing model, gov template copy (fillable) | A9, §9 |
 | `FORMS_CHECKLIST.md` — prefilled admin fields, signature flags (never signed) | A10 |
 | `SUBMISSION_INSTRUCTIONS.md` + `deadlines.ics` (questions / T-48h / deadline) | A11, §10.6 |
+| `rendered/*.docx` (+ `.pdf` with exact page counts when LibreOffice is present) | FR-15 |
+| `pricing/FILLED_<template>.xlsx` — the government's own workbook, filled on a copy | FR-12 |
+| `forms/PREFILLED_*.pdf` — fillable forms with admin fields prefilled (never certs) | A10 |
 | `QA_REPORT.md` — findings + mock evaluation (strengths/weaknesses/deficiencies) | A12 |
+| `dashboard.html` — self-contained reviewer dashboard: coverage, claims, QA, gates | A13 |
+| `AMENDMENT_REPORT.md` + `amendment_diffs.json` — after `bidpilot amend` re-runs | FR-4 |
+| `COST_TELEMETRY.md` — per-stage/per-model spend vs the NFR-2 budget | FR-22 |
 | `REVIEW_CHECKLIST.md` — every human action required before submission | FR-19 |
 | `audit.jsonl` + `package_*.zip` — audit bundle + versioned export | FR-18 |
 
@@ -108,11 +133,12 @@ Fast tier (`claude-haiku-4-5`) for volume work: window extraction, classificatio
 ## Evals (PRD §13, Phase 0)
 
 ```bash
-pytest                                              # 52 deterministic tests, no network
+pytest                                              # 76 deterministic tests, no network
+python -m evals.collect "https://sam.gov/opp/<id>/view" <slug>   # freeze a corpus item
 python -m evals.harness runs/<id>/compliance_matrix.json evals/corpus/<slug>/gold_matrix.csv
 ```
 
-The harness scores requirement **recall** against hand-built gold matrices (G2 target ≥ 98% — misses are catastrophic, extra rows are cheap). Phase 0's frozen 25-solicitation corpus and 5 gold artifact sets live in `evals/corpus/` (not committed; see the PRD's Phase 0 plan — *do not skip it*).
+The harness scores requirement **recall** against hand-built gold matrices (G2 target ≥ 98% — misses are catastrophic, extra rows are cheap). `evals/collect.py` snapshots a notice (API JSON + attachments + gold-matrix template + ROI-timing notes) into the frozen corpus. Phase 0's 25-item corpus and 5 gold artifact sets live in `evals/corpus/` (not committed; see the PRD's Phase 0 plan — *do not skip it*).
 
 ## What's deliberately NOT here (v1 non-goals)
 
@@ -120,8 +146,8 @@ Autonomous submission (NG1 — hard product principle), CUI/classified processin
 
 ## Roadmap deltas vs. the PRD (v1 → production)
 
-- DOCX/PDF rendering via docxtpl + LibreOffice headless with exact page-count verification (v1 uses a word-count heuristic and blocks on gross violations).
-- pgvector retrieval behind `KnowledgeBase`; Postgres checkpoints behind `CheckpointStore`.
-- Vision-LLM OCR for image-only PDFs (currently flagged for manual review).
-- PDF form-field filling (pypdf) for SF-1449/SF-33 overlays.
-- FastAPI + React reviewer UI (v1 reviews the run directory + exported files).
+- pgvector retrieval behind `KnowledgeBase`; Postgres checkpoints behind `CheckpointStore` (interfaces are in place; v1 uses YAML + JSON files).
+- Multi-tenant isolation + per-tenant encryption (FR-20) — v1 is single-tenant by design (PRD open question #1 recommends a design partner first).
+- FastAPI + React reviewer UI with tracked edits (v1 ships `dashboard.html` + the run directory, per the PRD's "pragmatic v1" reviewer note).
+- Learning loop (Phase 5.2): debrief/win-loss ingestion into win-theme selection.
+- Portal-specific checklists for PIEE/eBuy/FedConnect (Phase 5.3).

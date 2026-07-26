@@ -253,6 +253,37 @@ def test_resume_skips_completed_stages(tmp_path):
     assert router2.calls == []  # no LLM work on resume
 
 
+def test_capability_statement_path(tmp_path):
+    """Sources sought -> capability statement: no pricing, no forms, matrix
+    coverage downgraded to informational, export still gated + audited."""
+
+    class SourcesSoughtRouter(FakeRouter):
+        def structured(self, tier, **kw):
+            name = kw["output_type"].__name__
+            if name == "Classification":
+                return Classification(
+                    notice_type=NoticeType.SOURCES_SOUGHT,
+                    far_regime=FarRegime.UNKNOWN,
+                    response_artifact=ResponseArtifact.CAPABILITY_STATEMENT,
+                    confidence=0.95,
+                )
+            return super().structured(tier, **kw)
+
+    ctx = _make_ctx(tmp_path)
+    ctx.router = SourcesSoughtRouter()
+    state = run(ctx)
+
+    assert state.halted_reason is None
+    assert state.pricing is None and state.forms is None
+    assert len(state.section_drafts) == 1
+    assert state.section_drafts[0].volume == "Capability Statement"
+    # Unaddressed matrix rows are informational on this path, not blocking:
+    assert state.qa_report.hard_failures() == []
+    assert state.export_path and Path(state.export_path).exists()
+    rendered_names = [Path(rv.docx_path).name for rv in state.rendered_volumes]
+    assert any("Capability_Statement" in n for n in rendered_names)
+
+
 def test_export_blocked_on_hard_qa_failure(tmp_path):
     class FabricatingRouter(FakeRouter):
         def structured(self, tier, **kw):

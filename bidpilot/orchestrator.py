@@ -17,11 +17,24 @@ from typing import Callable, Optional
 
 from rich.console import Console
 
-from . import qa_checks
-from .agents import architect, classification, eligibility, forms, past_performance, qa, shredder, submission, writers
+from . import amendments, qa_checks, rendering, telemetry
+from .agents import (
+    architect,
+    capability,
+    classification,
+    eligibility,
+    forms,
+    past_performance,
+    pdf_forms,
+    qa,
+    shredder,
+    submission,
+    writers,
+)
 from .assembly import assemble_and_export, write_stage_artifacts
 from .audit import AuditLog
 from .docproc import process_attachments
+from .docproc import ocr as ocr_mod
 from .intake import SamGovClient, parse_notice_id, run_intake
 from .kb.store import KnowledgeBase
 from .models import HumanApproval, QAReport, ResponseArtifact
@@ -29,6 +42,7 @@ from .pricing import boe as boe_mod
 from .pricing import estimator as estimator_mod
 from .pricing import rates as rates_mod
 from .pricing import structure as structure_mod
+from .pricing import workbook as workbook_mod
 from .pricing.models import PricingModel
 from .routing import ModelRouter
 from .state import CheckpointStore, ProposalState, Stage
@@ -196,9 +210,32 @@ def _docproc(ctx: RunContext) -> None:
     notice = ctx.state.notice
     ctx.state.doc_tree = process_attachments(notice.files, notice.metadata.description_text)
     tree = ctx.state.doc_tree
-    ocr_docs = [d.name for d in tree.docs if d.ocr_used]
-    if ocr_docs:
-        ctx.console.print(f"  [yellow]OCR needed (image-only): {', '.join(ocr_docs)} — route to manual review[/yellow]")
+
+    # Parsing-ladder final rung: vision-OCR image-only PDFs page-by-page.
+    paths_by_name = {f.name: f.local_path for f in notice.files}
+    for i, doc in enumerate(tree.docs):
+        if doc.kind == "pdf" and doc.ocr_used and doc.name in paths_by_name:
+            ctx.console.print(f"  OCR (vision transcription): {doc.name}")
+            replaced = ocr_mod.ocr_pdf(ctx.router, paths_by_name[doc.name])
+            if replaced is not None:
+                tree.docs[i] = replaced
+    still_unreadable = [d.name for d in tree.docs if d.ocr_used and not d.full_text.strip()]
+    if still_unreadable:
+        ctx.console.print(
+            f"  [yellow]Unreadable (no text, no extractable images): "
+            f"{', '.join(still_unreadable)} — route to manual review[/yellow]"
+        )
+
+    # Amendment lifecycle: if `bidpilot amend` archived the previous doc tree,
+    # diff it against the freshly parsed one and write the what-changed report.
+    if amendments.load_archived_doc_tree(Path(ctx.state.run_dir)) is not None:
+        ctx.console.print("  amendment diff: comparing against pre-amendment documents…")
+        report = amendments.run_amendment_diff(ctx.router, Path(ctx.state.run_dir), tree)
+        if report and report.changes:
+            for change in report.changes:
+                marker = "[red]material[/red]" if change.severity == "material" else "admin"
+                ctx.console.print(f"   • ({marker}) {change.description}")
+            ctx.console.print("  see AMENDMENT_REPORT.md for the re-review checklist")
     # CUI/ITAR halt path (NG2, §14.5): halt-and-notify, do not process further.
     flags = tree.cui_flags()
     if flags:
@@ -226,9 +263,8 @@ def _classify(ctx: RunContext) -> None:
         ctx.console.print("  Nothing to produce (presolicitation/award) — monitoring only.")
     elif c.response_artifact == ResponseArtifact.CAPABILITY_STATEMENT:
         ctx.console.print(
-            "  [yellow]Sources sought: response is a capability statement, not a proposal. "
-            "The pipeline continues through eligibility, then stops (full capability-statement "
-            "flow is a v2 item).[/yellow]"
+            "  [cyan]Sources sought: the response is a 2-5 page capability statement — "
+            "the produce stage drafts that instead of proposal volumes (no pricing/forms).[/cyan]"
         )
 
 
@@ -237,8 +273,6 @@ def _eligibility(ctx: RunContext) -> None:
     state.eligibility = eligibility.check_eligibility(
         ctx.router, state.notice.metadata, state.classification, state.doc_tree, ctx.kb, ctx.sam
     )
-    if state.classification.response_artifact == ResponseArtifact.CAPABILITY_STATEMENT:
-        state.halted_reason = "capability_statement_flow_v2"
 
 
 def _shred(ctx: RunContext) -> None:
@@ -256,6 +290,21 @@ def _produce(ctx: RunContext) -> None:
     """Parallel production swarm inside a fixed graph node (§6.4)."""
     state = ctx.state
 
+    # Sources-sought branch: the deliverable is a capability statement —
+    # no proposal volumes, no pricing, no forms (PRD §2.2 table).
+    if state.classification.response_artifact == ResponseArtifact.CAPABILITY_STATEMENT:
+        ctx.console.print("  drafting capability statement…")
+        state.section_drafts = [
+            capability.write_capability_statement(
+                ctx.router, state.notice.metadata, state.doc_tree, ctx.kb
+            )
+        ]
+        ctx.console.print("  submission instructions…")
+        state.submission_sheet = submission.extract_submission(
+            ctx.router, state.notice.metadata, state.doc_tree
+        )
+        return
+
     ctx.console.print("  drafting sections (parallel writers)…")
     state.section_drafts = writers.write_all_sections(
         ctx.router, state.matrix, state.win_strategy, ctx.kb, state.doc_tree
@@ -271,6 +320,13 @@ def _produce(ctx: RunContext) -> None:
 
     ctx.console.print("  forms & certifications…")
     state.forms = forms.prepare_forms(ctx.router, state.notice, state.doc_tree, ctx.kb)
+    state.forms = pdf_forms.prefill_fillable_forms(
+        ctx.router,
+        state.forms,
+        Path(ctx.state.run_dir) / "attachments",
+        Path(ctx.state.run_dir) / "forms",
+        ctx.kb,
+    )
 
     ctx.console.print("  submission instructions…")
     state.submission_sheet = submission.extract_submission(
@@ -314,8 +370,42 @@ def _price(ctx: RunContext) -> PricingModel:
         ctx.console.print("  [yellow]No indirect rates in KB — totals are unburdened direct cost.[/yellow]")
     for violation in pricing.wd_violations:
         ctx.console.print(f"  [red]WD VIOLATION:[/red] {violation.detail}")
+
+    # Government pricing template: propose a fill, apply to a COPY (FR-12).
+    if structure.government_template_file:
+        template_path = _attachment_path(ctx.state, structure.government_template_file)
+        if template_path and template_path.exists():
+            ctx.console.print(f"  filling government template {template_path.name} (copy)…")
+            pricing.template_fill = workbook_mod.propose_fill(ctx.router, template_path, pricing)
+            filled, skipped = workbook_mod.apply_fill(
+                template_path,
+                pricing.template_fill,
+                Path(ctx.state.run_dir) / "pricing" / f"FILLED_{template_path.name}",
+            )
+            if filled is None:
+                reason = pricing.template_fill.unfillable_reason or "; ".join(skipped)
+                pricing.human_pricing_actions.append(
+                    f"Fill the government template {template_path.name} manually "
+                    f"(machine fill declined: {reason}); system-computed numbers are in priced_lines.csv"
+                )
+            elif skipped:
+                pricing.human_pricing_actions.append(
+                    f"Template fill skipped some cells ({'; '.join(skipped)}) — verify FILLED_{template_path.name}"
+                )
+            else:
+                pricing.human_pricing_actions.append(
+                    f"Verify every machine-filled cell in FILLED_{template_path.name} against priced_lines.csv"
+                )
+
     pricing.boe_narrative = boe_mod.write_boe(ctx.router, pricing)
     return pricing
+
+
+def _attachment_path(state: ProposalState, name: str) -> Optional[Path]:
+    for f in state.notice.files if state.notice else []:
+        if f.name == name:
+            return Path(f.local_path)
+    return None
 
 
 def _count_option_years(structure) -> int:
@@ -331,20 +421,56 @@ def _count_option_years(structure) -> int:
 
 
 def _assemble(ctx: RunContext) -> None:
-    # Artifacts are written after every stage; assembly's job is the volume
-    # merge + consistency inputs before QA.
-    write_stage_artifacts(ctx.state)
+    """Render volumes to DOCX (+ exact-page PDF when LibreOffice exists),
+    named per convention (FR-15). Markdown sources stay alongside."""
+    state = ctx.state
+    if state.section_drafts:
+        constraints = state.matrix.constraints if state.matrix else None
+        from .models import FormatConstraints
+
+        state.rendered_volumes = rendering.render_all_volumes(
+            state.section_drafts,
+            constraints or FormatConstraints(),
+            Path(state.run_dir) / "rendered",
+            solicitation_number=state.notice.metadata.solicitation_number if state.notice else None,
+            company=ctx.kb.profile.name,
+        )
+        for rv in state.rendered_volumes:
+            pages = f"{rv.page_count} pages (exact)" if rv.page_count else f"~{rv.estimated_pages:.0f} pages (estimate)"
+            ctx.console.print(f"  rendered {Path(rv.docx_path).name}: {pages}")
+        if not rendering.soffice_available():
+            ctx.console.print(
+                "  [dim]LibreOffice (soffice) not found — page counts are estimates; "
+                "install it for exact page verification.[/dim]"
+            )
+    write_stage_artifacts(state)
 
 
 def _qa(ctx: RunContext) -> None:
     state = ctx.state
     report = QAReport()
 
+    capability_path = (
+        state.classification is not None
+        and state.classification.response_artifact == ResponseArtifact.CAPABILITY_STATEMENT
+    )
     for iteration in range(MAX_QA_FIX_ITERATIONS + 1):
         findings = []
         findings += qa_checks.citation_check(state.section_drafts, ctx.kb)
-        findings += qa_checks.coverage_check(state.matrix, state.section_drafts)
-        findings += qa_checks.format_check(state.matrix, state.section_drafts)
+        if state.matrix:
+            coverage = qa_checks.coverage_check(state.matrix, state.section_drafts)
+            if capability_path:
+                # A capability statement doesn't carry proposal volumes; the
+                # L-outline coverage contract doesn't apply — informational only.
+                for finding in coverage:
+                    if finding.severity == qa_checks.QASeverity.HARD:
+                        finding.severity = qa_checks.QASeverity.SOFT
+            findings += coverage
+            if state.rendered_volumes:
+                # Renderer-owned page counts (exact when soffice converted).
+                findings += rendering.verify_rendered(state.rendered_volumes, state.matrix.constraints)
+            else:
+                findings += qa_checks.format_check(state.matrix, state.section_drafts)
         if state.pricing:
             findings += qa_checks.pricing_check(state.pricing)
             if state.pricing.estimate:
@@ -367,6 +493,16 @@ def _qa(ctx: RunContext) -> None:
             f"{len(fixable)} section(s) with QA feedback"
         )
         _redraft(ctx, fixable, findings)
+        if state.rendered_volumes:  # keep rendered files in sync with redrafts
+            from .models import FormatConstraints
+
+            state.rendered_volumes = rendering.render_all_volumes(
+                state.section_drafts,
+                state.matrix.constraints if state.matrix else FormatConstraints(),
+                Path(state.run_dir) / "rendered",
+                solicitation_number=state.notice.metadata.solicitation_number if state.notice else None,
+                company=ctx.kb.profile.name,
+            )
 
     ctx.console.print("  LLM audits: consistency, citation sampling, mock evaluation…")
     report.findings += qa.consistency_audit(ctx.router, state.section_drafts, state.pricing)
@@ -417,6 +553,16 @@ def _redraft(ctx: RunContext, section_ids: list[str], findings) -> None:
 def _export(ctx: RunContext) -> None:
     if not _gate(ctx, "final_package"):
         return
+    # Cost telemetry (FR-22 / NFR-2) rolls up before the ZIP so it ships inside it.
+    run_cost = telemetry.compute_costs(ctx.audit.path)
+    (Path(ctx.state.run_dir) / "COST_TELEMETRY.md").write_text(
+        telemetry.report_markdown(run_cost), encoding="utf-8"
+    )
+    if not run_cost.within_budget():
+        ctx.console.print(
+            f"  [yellow]model spend ${run_cost.total.cost_usd:.2f} exceeds the "
+            f"NFR-2 ${telemetry.NFR2_BUDGET_USD:.0f} budget — review COST_TELEMETRY.md[/yellow]"
+        )
     ctx.state.export_path = str(assemble_and_export(ctx.state, ctx.audit))
     ctx.console.print(f"[green]  package exported: {ctx.state.export_path}[/green]")
 

@@ -83,7 +83,17 @@ def write_stage_artifacts(state) -> None:
     if state.qa_report:
         _write(out / "qa_report.json", state.qa_report.model_dump_json(indent=2))
         _write(out / "QA_REPORT.md", qa_markdown(state))
+    if state.rendered_volumes:
+        _write(
+            out / "rendered" / "render_manifest.json",
+            json.dumps([rv.model_dump() for rv in state.rendered_volumes], indent=2),
+        )
     _write(out / "REVIEW_CHECKLIST.md", review_checklist(state))
+
+    # Reviewer dashboard (A13 pragmatic v1) — regenerate on every stage.
+    from .dashboard import write_dashboard
+
+    write_dashboard(state)
 
 
 def assemble_and_export(state, audit: AuditLog) -> Path:
@@ -224,9 +234,19 @@ def review_checklist(state) -> str:
         lines.append("")
         lines.append("## Forms & certifications (human-only)")
         for form in state.forms.forms:
+            if form.filled_file:
+                lines.append(
+                    f"- [ ] Verify machine-prefilled admin fields in {Path(form.filled_file).name}"
+                )
             if form.signature_required:
                 lines.append(f"- [ ] Sign: {form.form_name}")
             lines += [f"- [ ] {form.form_name}: {a}" for a in form.human_actions]
+    if state.matrix and state.matrix.constraints.naming_convention:
+        lines.append("")
+        lines.append(
+            f"- [ ] Verify rendered file names against Section L's convention: "
+            f"“{state.matrix.constraints.naming_convention}”"
+        )
     if state.submission_sheet:
         sheet = state.submission_sheet
         lines += [

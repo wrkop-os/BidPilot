@@ -108,6 +108,52 @@ class ModelRouter:
             raise RefusalError(_refusal_message(message))
         return "".join(block.text for block in message.content if block.type == "text")
 
+    # -- vision (OCR fallback for image-only pages) ----------------------------
+
+    def transcribe_image(
+        self,
+        image_bytes: bytes,
+        media_type: str = "image/png",
+        *,
+        stage: Optional[str] = None,
+    ) -> str:
+        """Transcribe one scanned page image to text (fast tier — volume work)."""
+        import base64
+
+        model = FAST_MODEL
+        start = time.monotonic()
+        response = self.client.messages.create(
+            model=model,
+            max_tokens=8000,
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image",
+                            "source": {
+                                "type": "base64",
+                                "media_type": media_type,
+                                "data": base64.standard_b64encode(image_bytes).decode(),
+                            },
+                        },
+                        {
+                            "type": "text",
+                            "text": (
+                                "Transcribe this scanned solicitation page verbatim. "
+                                "Preserve tables as pipe-delimited rows. Output only the "
+                                "transcription — no commentary."
+                            ),
+                        },
+                    ],
+                }
+            ],
+        )
+        self._audit(model, "ocr", f"<image {len(image_bytes)}B>", response, stage, time.monotonic() - start)
+        if response.stop_reason == "refusal":
+            raise RefusalError(_refusal_message(response))
+        return "".join(block.text for block in response.content if block.type == "text")
+
     # -- internals -------------------------------------------------------------
 
     def _audit(self, model, system, prompt, response, stage, duration) -> None:

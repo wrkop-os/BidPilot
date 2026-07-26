@@ -338,9 +338,15 @@ class PastPerformanceSelection(BaseModel):
 class FormItem(BaseModel):
     form_name: str
     purpose: str
+    source_file: Optional[str] = Field(
+        default=None, description="Attachment filename containing this form, if identified"
+    )
     prefill: dict[str, str] = Field(default_factory=dict)
     signature_required: bool = False
     human_actions: list[str] = Field(default_factory=list)
+    filled_file: Optional[str] = Field(
+        default=None, description="Path to the machine-prefilled copy (admin fields only)"
+    )
 
 
 class FormsPackage(BaseModel):
@@ -365,6 +371,19 @@ class SubmissionSheet(BaseModel):
     confidence_notes: Optional[str] = Field(
         default=None, description="Ambiguities a human must verify before submitting"
     )
+
+
+class RenderedVolumeInfo(BaseModel):
+    """One rendered volume (FR-15). page_count is exact when LibreOffice
+    converted the DOCX to PDF; estimated_pages is the always-available
+    word-count heuristic."""
+
+    volume: str
+    docx_path: str
+    pdf_path: Optional[str] = None
+    page_count: Optional[int] = None
+    estimated_pages: float = 0.0
+    word_count: int = 0
 
 
 # ---------------------------------------------------------------------------

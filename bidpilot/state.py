@@ -24,6 +24,7 @@ from .models import (
     NoticePackage,
     PastPerformanceSelection,
     QAReport,
+    RenderedVolumeInfo,
     SectionDraft,
     SubmissionSheet,
     WinStrategy,
@@ -71,6 +72,7 @@ class ProposalState(BaseModel):
     pricing: Optional[PricingModel] = None
     forms: Optional[FormsPackage] = None
     submission_sheet: Optional[SubmissionSheet] = None
+    rendered_volumes: list[RenderedVolumeInfo] = Field(default_factory=list)
     qa_report: Optional[QAReport] = None
 
     # Control

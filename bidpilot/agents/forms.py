@@ -20,7 +20,9 @@ federal proposal.
 - signature_required + human_actions: every signature block, certification
   answer, and amendment acknowledgment a human must execute.
 - If reps & certs are maintained in SAM.gov, note the human must verify the SAM
-  record is current."""
+  record is current.
+- source_file: when a form lives in a specific attachment (by filename in the
+  corpus), record that filename so the fillable-PDF pass can find it."""
 
 
 def prepare_forms(

@@ -95,6 +95,24 @@ class SensitivityPoint(BaseModel):
     total: float
 
 
+class CellWrite(BaseModel):
+    """One proposed write into the government's own XLSX pricing template."""
+
+    sheet: str
+    cell: str = Field(description="A1-style reference, e.g. 'D14'")
+    value: str = Field(description="Value to write (numbers as plain digits)")
+    note: str = Field(default="", description="What this cell is / why this value")
+
+
+class TemplateFillProposal(BaseModel):
+    writes: list[CellWrite] = Field(default_factory=list)
+    unfillable_reason: Optional[str] = Field(
+        default=None,
+        description="Set when the template can't be safely machine-filled (macros, merged "
+        "cells, unclear structure) — the fallback is 'human fills, system computes'",
+    )
+
+
 class PricingModel(BaseModel):
     structure: Optional[PricingStructure] = None
     estimate: Optional[LaborEstimate] = None
@@ -108,3 +126,4 @@ class PricingModel(BaseModel):
     boe_narrative: str = ""
     quote_needed: list[str] = Field(default_factory=list)
     human_pricing_actions: list[str] = Field(default_factory=list)
+    template_fill: Optional[TemplateFillProposal] = None
