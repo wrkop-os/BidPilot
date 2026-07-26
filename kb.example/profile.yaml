@@ -1,0 +1,52 @@
+# Company profile — the identity/registration/rates record (KB governance:
+# keep last_verified fresh; stale entries are flagged).
+kb_id: profile
+name: "Example Federal Solutions LLC"
+uei: "ABC123DEF456"
+cage_code: "1A2B3"
+address: "123 Main St, Suite 400, Arlington, VA 22201"
+poc_name: "Jordan Rivera"
+poc_email: "jrivera@examplefedsol.com"
+poc_phone: "(703) 555-0142"
+
+naics_codes: ["541511", "541512"]
+size_status_by_naics:
+  "541511": small
+  "541512": small
+annual_receipts_avg: 6200000        # average annual receipts, dollars
+employee_count: 38
+socioeconomic_certifications: ["SDVOSB"]
+sam_registration_active: true
+facility_clearance: null
+cmmc_level: null
+bonding_capacity: null
+size_data_verified_date: "2026-05-01"
+
+capabilities:
+  - "Full-stack web application development (Python, TypeScript, AWS GovCloud)"
+  - "Data engineering and analytics pipelines"
+  - "Agile software delivery (SAFe, Scrum) for federal customers"
+  - "Section 508 accessibility remediation"
+
+labor_categories:
+  - title: "Program Manager"
+    direct_rate: 82.00
+  - title: "Senior Software Engineer"
+    direct_rate: 75.00
+  - title: "Software Engineer"
+    direct_rate: 58.00
+  - title: "DevSecOps Engineer"
+    direct_rate: 70.00
+  - title: "Help Desk Technician"
+    direct_rate: 24.00
+
+indirect_rates:
+  fringe: 0.32
+  overhead: 0.28
+  gna: 0.12
+  fee: 0.08
+  escalation_per_year: 0.03
+
+governance:
+  owner: "jrivera"
+  last_verified: "2026-05-01"

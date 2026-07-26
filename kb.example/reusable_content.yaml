@@ -1,0 +1,20 @@
+# Reusable content: quality plans, management approaches, prior proposals,
+# ODC catalogs. Goldmine for RAG; citable by kb_id.
+- kb_id: content-quality-plan
+  title: "Quality Control Plan (baseline)"
+  kind: quality_plan
+  text: >
+    Our QCP uses a three-tier inspection model: peer review on every
+    deliverable, weekly PM quality audits against the PWS performance
+    standards, and monthly management reviews with corrective-action tracking
+    in our QMS. Metrics are reported in the Monthly Status Report.
+  governance: { owner: "jrivera", last_verified: "2026-02-20" }
+
+- kb_id: content-odc-catalog
+  title: "Standard ODC catalog"
+  kind: odc_catalog
+  text: >
+    Laptop (GFE-equivalent, 3-yr lifecycle): $1,850. Standard CONUS travel
+    day (per GSA per diem, DC area): $380/day + airfare. AWS GovCloud
+    baseline environment: $1,100/month.
+  governance: { owner: "jrivera", last_verified: "2026-01-10" }

@@ -1,0 +1,76 @@
+"""Intake agent A1: URL -> NoticePackage with the FULL amendment chain.
+
+Bidding off a stale version is a classic fatal error, so intake fetches all
+notices sharing the solicitation number, orders them by posted date, marks
+the latest, and downloads attachments from every notice in the chain
+(amendment attachments supersede/extend base ones).
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+from ..models import AmendmentRecord, NoticePackage
+from .samgov import SamGovClient, parse_notice_id
+
+
+def run_intake(sam: SamGovClient, url_or_id: str, dest_dir: Path) -> NoticePackage:
+    notice_id = parse_notice_id(url_or_id)
+    metadata = sam.notice_metadata(notice_id)
+
+    # Amendment chain: every notice under the same solicitation number.
+    chain = order_amendment_chain(
+        sam.search_by_solicitation_number(metadata.solicitation_number)
+        if metadata.solicitation_number
+        else []
+    )
+    if not chain:
+        chain = [AmendmentRecord(notice_id=notice_id, posted_date=metadata.posted_date, is_latest=True)]
+
+    # If the linked notice is not the latest in the chain, re-anchor metadata on
+    # the latest — its deadline and attachments govern.
+    latest = next(rec for rec in chain if rec.is_latest)
+    if latest.notice_id != notice_id:
+        metadata = sam.notice_metadata(latest.notice_id)
+        metadata.notice_id = latest.notice_id
+
+    files = []
+    for rec in chain:
+        files.extend(sam.download_attachments(rec.notice_id, dest_dir))
+
+    # De-duplicate identical files fetched from multiple notices in the chain.
+    seen: set[str] = set()
+    unique_files = []
+    for f in files:
+        key = f.sha256 or f.name
+        if key in seen:
+            continue
+        seen.add(key)
+        unique_files.append(f)
+
+    return NoticePackage(
+        metadata=metadata,
+        files=unique_files,
+        amendment_history=chain,
+        restricted_files_flagged=any(f.restricted for f in unique_files),
+    )
+
+
+def order_amendment_chain(records: list[dict]) -> list[AmendmentRecord]:
+    """Order raw API records by posted date; mark the newest as latest."""
+    def _key(r: dict) -> str:
+        return r.get("postedDate") or ""
+
+    ordered = sorted(records, key=_key)
+    chain = [
+        AmendmentRecord(
+            notice_id=(r.get("noticeId") or r.get("noticeid") or "").lower(),
+            posted_date=r.get("postedDate"),
+            title=r.get("title"),
+        )
+        for r in ordered
+        if r.get("noticeId") or r.get("noticeid")
+    ]
+    if chain:
+        chain[-1].is_latest = True
+    return chain

@@ -1,0 +1,32 @@
+# Past performance library — structured records; the ONLY source writers may
+# cite for past-performance claims.
+- kb_id: pp-gsa-dataplatform
+  customer: "GSA"
+  contract_number: "47QTCA23D0001"
+  value: 1800000
+  period: "2023-01 to 2025-06"
+  scope_narrative: >
+    Data platform modernization: migrated 14 legacy reporting systems to a
+    consolidated AWS GovCloud analytics platform; built ingestion pipelines
+    for 40+ sources; achieved Authority to Operate in 9 months.
+  naics_codes: ["541512"]
+  cpars_rating: "Exceptional"
+  reference_contact: "jane.doe@gsa.gov"
+  role: prime
+  historical_actuals: >
+    ~11,000 labor hours total: PM 1,200; Sr SWE 4,800; SWE 3,600; DevSecOps 1,400.
+    Per-system migration averaged ~700 hours.
+  governance: { owner: "jrivera", last_verified: "2026-04-15" }
+
+- kb_id: pp-va-portal
+  customer: "Department of Veterans Affairs"
+  contract_number: "36C10B22N0042"
+  value: 950000
+  period: "2022-03 to 2024-09"
+  scope_narrative: >
+    Claims-processing web portal sustainment: maintained a Django/React
+    application serving 60k monthly users; 508 remediation; 99.7% uptime.
+  naics_codes: ["541511"]
+  cpars_rating: "Very Good"
+  role: subcontractor
+  governance: { owner: "jrivera", last_verified: "2026-04-15" }

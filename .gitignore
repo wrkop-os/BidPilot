@@ -7,8 +7,10 @@ dist/
 build/
 .pytest_cache/
 
-# BidPilot runtime artifacts & user data
+# BidPilot runtime artifacts & tenant data
+runs/
 output/
-company_profile.yaml
-company_profile.yml
+kb/
+knowledge_base/
+evals/corpus/
 .env

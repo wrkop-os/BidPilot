@@ -1,0 +1,18 @@
+# Key personnel — resumes writers may cite.
+- kb_id: person-jrivera
+  name: "Jordan Rivera"
+  role: "Program Manager"
+  resume_summary: >
+    PMP-certified program manager with 12 years of federal delivery across GSA
+    and VA programs; led the GSA data platform modernization (CPARS Exceptional).
+  certifications: ["PMP", "SAFe 6 Agilist"]
+  governance: { owner: "jrivera", last_verified: "2026-03-01" }
+
+- kb_id: person-sokafor
+  name: "Sam Okafor"
+  role: "Lead Engineer"
+  resume_summary: >
+    AWS Solutions Architect Professional with 10 years building and operating
+    federal cloud systems; technical lead on the VA claims portal sustainment.
+  certifications: ["AWS Solutions Architect Professional", "CISSP"]
+  governance: { owner: "jrivera", last_verified: "2026-03-01" }

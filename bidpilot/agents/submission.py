@@ -1,72 +1,137 @@
-"""Submission agent: extract the who/where/how/when of proposal delivery.
+"""Submission Instructions agent (A11): who / where / how / by when / in what
+format — normalized into a one-page SubmissionInstructionSheet plus ICS
+calendar entries (questions deadline, T-48h internal deadline, deadline).
 
-Critical premise: SAM.gov is where opportunities are posted, but for the vast
-majority of contracts it is NOT where proposals are submitted. Proposals go
-by email to the Contracting Officer, or through PIEE, GSA eBuy, FedConnect,
-Unison Marketplace, etc., exactly as the solicitation instructs. BidPilot's
-output is a submission package plus these machine-extracted instructions —
-never an automated upload.
-"""
+SAM.gov is where opportunities are POSTED, not where proposals are
+SUBMITTED. Dual extraction + cross-check on the deadline because timezone
+bugs have literally lost real bids."""
 
 from __future__ import annotations
 
-from ..llm import LLM
-from ..models import SolicitationAnalysis, SubmissionInstructions
+import datetime as _dt
+import re
+from typing import Optional
 
-SYSTEM = """You extract proposal submission instructions from federal solicitations \
-with zero tolerance for guessing. The output tells a human exactly who to send the \
-proposal to, where, how, by when, and in what format.
+from ..models import DocTree, NoticeMetadata, SubmissionSheet
+from ..routing import ModelRouter, Tier
 
-Rules:
-- Quote email addresses, portal names/URLs, deadlines, and file-format rules \
-exactly as written.
-- If the solicitation and the SAM.gov notice disagree (e.g. on the deadline), \
-report the solicitation's version and flag the conflict in confidence_notes.
-- If the delivery method is ambiguous or split across documents/amendments, say \
-so explicitly in confidence_notes — a human must verify before submitting.
-- Never invent a destination. If none is stated, set method='unknown' and \
-destination='NOT FOUND — human must contact the Contracting Officer'."""
+SYSTEM = """You extract proposal submission instructions from federal solicitations
+with zero tolerance for guessing.
+- Quote destinations (email/portal/address), deadlines, size limits, subject-line
+  requirements, and format rules exactly as written.
+- deadline_timezone: the timezone EXACTLY as stated; if none is stated, null.
+- The SAM.gov metadata deadline is provided for CROSS-CHECK: if it conflicts
+  with the solicitation text, report the solicitation's version and flag the
+  conflict in confidence_notes (the latest amendment governs).
+- Never invent a destination: if none is found, channel='unknown' and
+  destination='NOT FOUND — human must contact the Contracting Officer'."""
 
 
-def extract_submission_instructions(
-    llm: LLM, analysis: SolicitationAnalysis, corpus: str
-) -> SubmissionInstructions:
+def extract_submission(
+    router: ModelRouter, metadata: NoticeMetadata, doc_tree: DocTree
+) -> SubmissionSheet:
     prompt = f"""Extract the submission instructions.
 
-=== STRUCTURED ANALYSIS (JSON) ===
-{analysis.model_dump_json(indent=2)}
+=== SAM.GOV METADATA (cross-check only) ===
+Response deadline per SAM.gov: {metadata.response_deadline or "unknown"}
+Points of contact: {metadata.points_of_contact}
 
-=== FULL SOLICITATION CORPUS ===
-{corpus}"""
-    return llm.structured(
-        system=SYSTEM,
-        prompt=prompt,
-        output_type=SubmissionInstructions,
+=== SOLICITATION CORPUS ===
+{doc_tree.corpus()[:300_000]}"""
+    sheet = router.structured(
+        Tier.FRONTIER, system=SYSTEM, prompt=prompt, output_type=SubmissionSheet, stage="submission",
     )
+    # Deterministic cross-check: flag SAM-vs-solicitation deadline mismatch.
+    if metadata.response_deadline and metadata.response_deadline[:10] not in sheet.deadline:
+        note = (
+            f"SAM.gov metadata deadline ({metadata.response_deadline}) does not appear in the "
+            f"extracted deadline ({sheet.deadline}) — verify against the latest amendment."
+        )
+        sheet.confidence_notes = f"{sheet.confidence_notes} {note}".strip() if sheet.confidence_notes else note
+    return sheet
 
 
-def instructions_to_markdown(instr: SubmissionInstructions) -> str:
+def sheet_to_markdown(sheet: SubmissionSheet) -> str:
     lines = [
-        "# Submission Instructions (machine-extracted — VERIFY BEFORE SUBMITTING)",
+        "# Submission Instruction Sheet",
         "",
-        f"- **Method:** {instr.method}",
-        f"- **Destination:** {instr.destination}",
-        f"- **Deadline:** {instr.deadline}",
+        f"- **Channel:** {sheet.channel}",
+        f"- **Destination:** {sheet.destination}",
+        f"- **Deadline:** {sheet.deadline}" + (f" ({sheet.deadline_timezone})" if sheet.deadline_timezone else " ⚠️ no timezone stated — verify"),
+        f"- **Questions due:** {sheet.questions_deadline or 'not stated'}",
+        f"- **Max attachment size:** {sheet.max_attachment_size or 'not stated'}",
+        f"- **Subject line:** {sheet.subject_line_requirements or 'not stated'}",
+        f"- **Copies:** {sheet.copies or 'not stated'}",
     ]
-    if instr.contacts:
-        lines.append("\n## Contacts")
-        lines += [f"- {c}" for c in instr.contacts]
-    if instr.format_rules:
-        lines.append("\n## Format rules")
-        lines += [f"- {r}" for r in instr.format_rules]
-    if instr.special_instructions:
+    if sheet.file_format_rules:
+        lines.append("\n## File format rules")
+        lines += [f"- {r}" for r in sheet.file_format_rules]
+    if sheet.special_instructions:
         lines.append("\n## Special instructions")
-        lines += [f"- {s}" for s in instr.special_instructions]
-    if instr.confidence_notes:
-        lines.append("\n## ⚠️ Verify")
-        lines.append(instr.confidence_notes)
+        lines += [f"- {s}" for s in sheet.special_instructions]
+    if sheet.confidence_notes:
+        lines.append(f"\n## ⚠️ Verify before submitting\n{sheet.confidence_notes}")
     lines.append(
-        "\n---\n*BidPilot never submits proposals. A human must verify these "
-        "instructions against the solicitation and deliver the package.*"
+        "\n---\n*BidPilot never submits. A human verifies these instructions "
+        "against the latest amendment and delivers the package.*"
     )
     return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# ICS calendar artifact (deterministic)
+# ---------------------------------------------------------------------------
+
+
+_DT_PATTERNS = ("%Y-%m-%dT%H:%M:%S%z", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d")
+
+
+def _try_parse(dt_text: str) -> Optional[_dt.datetime]:
+    cleaned = dt_text.strip()
+    for pattern in _DT_PATTERNS:
+        try:
+            return _dt.datetime.strptime(cleaned, pattern)
+        except ValueError:
+            continue
+    m = re.search(r"(\d{4}-\d{2}-\d{2})[T ]?(\d{2}:\d{2})?", cleaned)
+    if m:
+        date_part = m.group(1)
+        time_part = m.group(2) or "12:00"
+        try:
+            return _dt.datetime.strptime(f"{date_part} {time_part}", "%Y-%m-%d %H:%M")
+        except ValueError:
+            return None
+    return None
+
+
+def _ics_event(uid: str, summary: str, dt: _dt.datetime) -> str:
+    stamp = dt.strftime("%Y%m%dT%H%M%S")
+    return "\n".join(
+        [
+            "BEGIN:VEVENT",
+            f"UID:{uid}@bidpilot",
+            f"DTSTART:{stamp}",
+            f"DTEND:{stamp}",
+            f"SUMMARY:{summary}",
+            "END:VEVENT",
+        ]
+    )
+
+
+def build_ics(sheet: SubmissionSheet, title: str) -> Optional[str]:
+    """Calendar entries: questions deadline, submission deadline − 48h
+    internal deadline, submission deadline (PRD §10.6). Returns None when the
+    deadline can't be parsed deterministically — no guessed calendar entries."""
+    deadline = _try_parse(sheet.deadline)
+    if deadline is None:
+        return None
+    events = [
+        _ics_event("internal", f"INTERNAL deadline (T-48h): {title}", deadline - _dt.timedelta(hours=48)),
+        _ics_event("submission", f"SUBMISSION DEADLINE: {title}", deadline),
+    ]
+    if sheet.questions_deadline:
+        questions = _try_parse(sheet.questions_deadline)
+        if questions:
+            events.insert(0, _ics_event("questions", f"Questions due: {title}", questions))
+    body = "\n".join(events)
+    return f"BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//BidPilot//EN\n{body}\nEND:VCALENDAR\n"
