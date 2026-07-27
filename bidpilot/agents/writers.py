@@ -12,7 +12,9 @@ Hard rules encoded in the prompt (PRD §6.3):
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
+from typing import Optional
 
+from ..docproc.index import SearchIndex
 from ..kb.store import KnowledgeBase
 from ..models import (
     ComplianceMatrix,
@@ -22,6 +24,9 @@ from ..models import (
     WinStrategy,
 )
 from ..routing import ModelRouter, Tier
+
+# Per-section context budget: relevant excerpts, not the whole corpus (NFR-2).
+SECTION_CONTEXT_CHARS = 60_000
 
 SYSTEM = """You are a senior federal proposal section writer. Draft ONE proposal
 section. Hard rules:
@@ -48,6 +53,7 @@ def write_section(
     strategy: WinStrategy,
     kb: KnowledgeBase,
     doc_tree: DocTree,
+    index: Optional[SearchIndex] = None,
 ) -> SectionDraft:
     assigned = [r for r in matrix.requirements if r.req_id in set(section.assigned_requirements)]
     assigned_text = "\n".join(
@@ -55,6 +61,16 @@ def write_section(
         for i, r in enumerate(assigned)
     )
     page_limit = matrix.constraints.page_limits.get(section.volume)
+
+    # Retrieval: pull the excerpts relevant to THIS section (title + guidance
+    # + its assigned requirement texts as the query) instead of shipping the
+    # entire corpus to every parallel writer.
+    index = index or SearchIndex.from_doc_tree(doc_tree)
+    query = " ".join(
+        [section.title, section.guidance or ""] + [r.verbatim_text for r in assigned]
+    )
+    solicitation_context = index.excerpts(query, budget_chars=SECTION_CONTEXT_CHARS)
+
     prompt = f"""Draft this section.
 
 === SECTION ===
@@ -73,8 +89,8 @@ Volume page limit: {page_limit or "not stated"}
 === COMPANY KNOWLEDGE BASE (the ONLY source for company facts) ===
 {kb.citable_corpus()[:150_000]}
 
-=== RELEVANT SOLICITATION TEXT ===
-{doc_tree.corpus()[:200_000]}"""
+=== RELEVANT SOLICITATION EXCERPTS (retrieved; each labeled [doc p.N]) ===
+{solicitation_context}"""
     draft = router.structured(
         Tier.FRONTIER,
         system=SYSTEM,
@@ -111,9 +127,10 @@ def write_all_sections(
                 ],
             )
         ]
+    index = SearchIndex.from_doc_tree(doc_tree)  # built once, shared by the pool
     with ThreadPoolExecutor(max_workers=max_workers) as pool:
         futures = [
-            pool.submit(write_section, router, s, matrix, strategy, kb, doc_tree)
+            pool.submit(write_section, router, s, matrix, strategy, kb, doc_tree, index)
             for s in sections
         ]
         return [f.result() for f in futures]

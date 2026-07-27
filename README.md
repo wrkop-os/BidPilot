@@ -45,6 +45,10 @@ qa ──────────── A12: deterministic checks in code (cover
 export ──────── versioned ZIP + manifest + audit bundle + cost telemetry (NFR-2)
 ```
 
+### The retrieval layer (A2, NFR-2)
+
+Section writers query a dependency-free BM25-style index (`docproc/index.py`) over corpus chunks carrying doc/page metadata, pulling only the excerpts relevant to their section (~60K chars) instead of the full 200–400K-char corpus per parallel frontier call. Recall-critical agents — shredder, classifier, eligibility, submission — still read everything: recall beats cost there. The index sits behind the interface pgvector will occupy in production.
+
 ### The pricing engine (PRD §9)
 
 The one module where "LLM writes a number" is unacceptable:
