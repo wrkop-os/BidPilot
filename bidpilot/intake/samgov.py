@@ -46,12 +46,55 @@ def parse_notice_id(url_or_id: str) -> str:
 
 
 class SamGovClient:
+    """SAM.gov client with NFR-3 resilience: idempotent GETs retry on
+    connection errors, 429, and 5xx with exponential backoff (Retry-After
+    honored when present). 4xx other than 429 never retries."""
+
+    MAX_RETRIES = 3
+    BACKOFF_BASE_S = 1.0
+    BACKOFF_CAP_S = 30.0
+
     def __init__(self, api_key: Optional[str] = None, cache_dir: Optional[Path] = None, timeout: float = 60.0):
         self.api_key = api_key or os.environ.get("SAM_GOV_API_KEY")
         self.cache_dir = cache_dir
         if self.cache_dir:
             self.cache_dir.mkdir(parents=True, exist_ok=True)
         self._http = httpx.Client(timeout=timeout, follow_redirects=True)
+        self._sleep = __import__("time").sleep  # injectable for tests
+
+    def _get(self, url: str, params: Optional[dict] = None) -> httpx.Response:
+        """GET with retry/backoff. Raises on the final failure like
+        raise_for_status / the underlying transport would."""
+        last_exc: Optional[Exception] = None
+        for attempt in range(self.MAX_RETRIES + 1):
+            try:
+                resp = self._http.get(url, params=params)
+            except (httpx.TransportError, httpx.TimeoutException) as exc:
+                last_exc = exc
+                self._backoff(attempt, None)
+                continue
+            if resp.status_code == 429 or resp.status_code >= 500:
+                last_exc = httpx.HTTPStatusError(
+                    f"{resp.status_code} from {url}", request=resp.request, response=resp
+                )
+                if attempt < self.MAX_RETRIES:
+                    self._backoff(attempt, resp.headers.get("retry-after"))
+                    continue
+                resp.raise_for_status()
+            resp.raise_for_status()
+            return resp
+        raise last_exc  # transport errors exhausted retries
+
+    def _backoff(self, attempt: int, retry_after: Optional[str]) -> None:
+        if attempt >= self.MAX_RETRIES:
+            return
+        delay = min(self.BACKOFF_BASE_S * (2 ** attempt), self.BACKOFF_CAP_S)
+        if retry_after:
+            try:
+                delay = max(delay, float(retry_after))
+            except ValueError:
+                pass
+        self._sleep(delay)
 
     # -- notice metadata -------------------------------------------------------
 
@@ -92,7 +135,7 @@ class SamGovClient:
 
     def list_resources(self, notice_id: str) -> list[dict]:
         try:
-            resp = self._http.get(RESOURCES_API.format(notice_id=notice_id))
+            resp = self._get(RESOURCES_API.format(notice_id=notice_id))
             resp.raise_for_status()
             payload = resp.json()
         except Exception:
@@ -127,7 +170,7 @@ class SamGovClient:
                 continue
             if not local_path.exists():  # never re-fetch unchanged attachments
                 try:
-                    dl = self._http.get(DOWNLOAD_API.format(resource_id=resource_id))
+                    dl = self._get(DOWNLOAD_API.format(resource_id=resource_id))
                     dl.raise_for_status()
                     local_path.write_bytes(dl.content)
                 except Exception:
@@ -156,7 +199,7 @@ class SamGovClient:
         if not self.api_key:
             return None
         try:
-            resp = self._http.get(ENTITY_API, params={"api_key": self.api_key, "ueiSAM": uei})
+            resp = self._get(ENTITY_API, params={"api_key": self.api_key, "ueiSAM": uei})
             resp.raise_for_status()
             data = resp.json()
             entities = data.get("entityData") or []
@@ -194,7 +237,7 @@ class SamGovClient:
         cached = self._cache_get(cache_key)
         if cached is not None:
             return cached
-        resp = self._http.get(SEARCH_API, params=params)
+        resp = self._get(SEARCH_API, params=params)
         resp.raise_for_status()
         data = resp.json()
         self._cache_put(cache_key, data)
@@ -209,8 +252,7 @@ class SamGovClient:
                 url = desc
                 if self.api_key and "api_key" not in url:
                     url += ("&" if "?" in url else "?") + f"api_key={self.api_key}"
-                resp = self._http.get(url)
-                resp.raise_for_status()
+                resp = self._get(url)
                 body = resp.json()
                 text = body.get("description") if isinstance(body, dict) else None
                 return strip_html(text or "")

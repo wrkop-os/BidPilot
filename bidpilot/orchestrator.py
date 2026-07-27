@@ -35,7 +35,13 @@ from .assembly import assemble_and_export, write_stage_artifacts
 from .audit import AuditLog
 from .docproc import process_attachments
 from .docproc import ocr as ocr_mod
-from .intake import SamGovClient, parse_notice_id, run_intake
+from .intake import (
+    SamGovClient,
+    parse_notice_id,
+    register_manual_attachments,
+    run_intake,
+    unprocessed_manual_attachments,
+)
 from .kb.store import KnowledgeBase
 from .models import HumanApproval, QAReport, ResponseArtifact
 from .pricing import boe as boe_mod
@@ -99,6 +105,19 @@ def run(ctx: RunContext, stop_after: Optional[Stage] = None) -> ProposalState:
         ctx.audit.record("halt_cleared_on_resume", actor="orchestrator",
                          detail=state.halted_reason)
         state.halted_reason = None
+
+    # Files dropped into attachments/ AFTER document processing completed
+    # won't be in the corpus — tell the operator how to include them.
+    if state.notice and state.is_done(Stage.DOCPROC):
+        stragglers = unprocessed_manual_attachments(
+            state.notice, Path(state.run_dir) / "attachments"
+        )
+        if stragglers:
+            ctx.console.print(
+                f"[yellow]Attachments on disk but not yet processed: {', '.join(stragglers)} — "
+                f"run `bidpilot redo docproc {state.notice.metadata.notice_id}` then re-run to "
+                "include them.[/yellow]"
+            )
 
     for node in build_graph():
         if state.halted_reason:
@@ -237,13 +256,19 @@ def _intake(ctx: RunContext) -> None:
     )
     if notice.restricted_files_flagged:
         ctx.console.print(
-            "  [yellow]Some attachments are login-restricted — download manually into "
-            f"{dest} and re-run (they'll be picked up on resume).[/yellow]"
+            "  [yellow]Some attachments are login-restricted — download them manually into "
+            f"{dest}, then re-run; document processing picks them up "
+            "(if it already ran: `bidpilot redo docproc <notice>` first).[/yellow]"
         )
 
 
 def _docproc(ctx: RunContext) -> None:
     notice = ctx.state.notice
+    # Manual-upload fallback (FR-1): pick up files a human dropped into the
+    # attachments dir (restricted downloads, or extra documents).
+    picked_up = register_manual_attachments(notice, Path(ctx.state.run_dir) / "attachments")
+    if picked_up:
+        ctx.console.print(f"  manually supplied attachments picked up: {', '.join(picked_up)}")
     ctx.state.doc_tree = process_attachments(notice.files, notice.metadata.description_text)
     tree = ctx.state.doc_tree
 
