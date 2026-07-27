@@ -66,6 +66,10 @@ def main(argv: list[str] | None = None) -> int:
     costs_p.add_argument("url")
     costs_p.add_argument("--out", default="runs")
 
+    status_p = sub.add_parser("status", help="Run state: stages, gates, blockers, deliverables (no API keys needed)")
+    status_p.add_argument("url")
+    status_p.add_argument("--out", default="runs")
+
     doctor_p = sub.add_parser("doctor", help="Environment & contract checks (keys, KB, renderer, SAM API)")
     doctor_p.add_argument("--kb", default=None)
     doctor_p.add_argument("--network", action="store_true", help="Also ping the SAM.gov API (NFR-3 contract check)")
@@ -90,6 +94,8 @@ def main(argv: list[str] | None = None) -> int:
         return _reprice(args)
     if args.command == "costs":
         return _costs(args)
+    if args.command == "status":
+        return _status(args)
     if args.command == "doctor":
         return _doctor(args)
     return _run(args, analyst_only=(args.command == "analyze"))
@@ -294,6 +300,58 @@ def _costs(args) -> int:
         return 1
     run_cost = compute_costs(audit_path)
     console.print(report_markdown(run_cost))
+    return 0
+
+
+def _status(args) -> int:
+    """Operator view of a run, straight from the checkpoint — safe to call
+    anytime, needs no API keys and makes no model calls."""
+    from .intake.samgov import parse_notice_id
+    from .state import STAGE_ORDER, CheckpointStore
+
+    notice_id = parse_notice_id(args.url)
+    run_dir = Path(args.out) / notice_id
+    state = CheckpointStore(run_dir).load()
+    if state is None:
+        console.print(f"[red]No run found at {run_dir}.[/red]")
+        return 1
+
+    title = (state.notice.metadata.title if state.notice else None) or notice_id
+    console.print(f"[bold]{title}[/bold]  (run {state.run_id})")
+    if state.notice and state.notice.metadata.response_deadline:
+        console.print(f"deadline (SAM.gov): {state.notice.metadata.response_deadline}")
+
+    for stage in STAGE_ORDER:
+        mark = "[green]✔[/green]" if state.is_done(stage) else "[dim]·[/dim]"
+        console.print(f" {mark} {stage.value}")
+
+    if state.halted_reason:
+        console.print(f"[yellow]halted: {state.halted_reason} — re-run `bidpilot run` to resume[/yellow]")
+    for approval in state.approvals:
+        verdict = "[green]approved[/green]" if approval.approved else "[red]declined[/red]"
+        console.print(f" gate {approval.gate}: {verdict} by {approval.actor} at {approval.timestamp}")
+
+    if state.eligibility:
+        console.print(f" bid recommendation: [bold]{state.eligibility.bid_recommendation.value}[/bold]")
+    if state.matrix:
+        drafted = sum(1 for r in state.matrix.requirements if r.status.value != "unaddressed")
+        console.print(f" compliance: {drafted}/{len(state.matrix.requirements)} requirements addressed")
+    needs_input = sum(1 for d in state.section_drafts for c in d.claims if c.needs_input)
+    if state.section_drafts:
+        console.print(f" drafts: {len(state.section_drafts)} section(s), {needs_input} [NEEDS INPUT] items")
+    if state.pricing and state.pricing.total is not None:
+        console.print(f" pricing: ${state.pricing.total:,.2f} ROM"
+                      + (f", [red]{len(state.pricing.wd_violations)} WD violations[/red]"
+                         if state.pricing.wd_violations else ""))
+    if state.qa_report:
+        hard = state.qa_report.hard_failures()
+        color = "red" if hard else "green"
+        console.print(f" QA: {len(state.qa_report.findings)} findings, [{color}]{len(hard)} open hard[/{color}]")
+    if state.export_path:
+        console.print(f" [green]exported:[/green] {state.export_path}")
+    dashboard = run_dir / "dashboard.html"
+    if dashboard.exists():
+        console.print(f" dashboard: {dashboard}")
     return 0
 
 

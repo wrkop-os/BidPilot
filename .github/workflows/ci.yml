@@ -1,0 +1,63 @@
+name: CI
+
+# PRD cross-phase cadence: every change re-runs the deterministic test suite
+# before merge. (The 25-corpus eval sweep needs live artifacts + keys and runs
+# out-of-band; this gate covers the deterministic core.)
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+      - name: Install
+        run: pip install -e ".[dev,tables]"
+      - name: Run tests
+        run: python -m pytest -q
+      - name: CLI smoke
+        run: |
+          bidpilot --help > /dev/null
+          bidpilot doctor --kb kb.example || true   # informational; env has no keys
+
+  # Exact page-count path (LibreOffice) exercised separately so the main job stays fast.
+  render-exact:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install LibreOffice Writer
+        run: sudo apt-get update -q && sudo apt-get install -y -q libreoffice-writer
+      - name: Install
+        run: pip install -e ".[dev]"
+      - name: Verify exact page counting
+        run: |
+          python - <<'EOF'
+          from pathlib import Path
+          import tempfile
+          from bidpilot.models import FormatConstraints, SectionDraft
+          from bidpilot.rendering import render_all_volumes, soffice_conversion_works
+
+          assert soffice_conversion_works(), "soffice conversion probe failed"
+          md = "## T\n" + ("prose sentence here. " * 900)
+          draft = SectionDraft(section_id="T", volume="Volume I", title="T",
+                               markdown=md, word_count=len(md.split()))
+          with tempfile.TemporaryDirectory() as tmp:
+              rv = render_all_volumes([draft], FormatConstraints(), Path(tmp), None, None)[0]
+              assert rv.page_count is not None and rv.page_count > 1, rv
+              print("exact pages:", rv.page_count)
+          EOF
