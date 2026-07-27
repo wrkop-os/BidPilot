@@ -31,6 +31,19 @@ def citation_check(drafts: list[SectionDraft], kb: KnowledgeBase) -> list[QAFind
     or be an explicit [NEEDS INPUT]."""
     findings: list[QAFinding] = []
     for draft in drafts:
+        if draft.human_edited:
+            findings.append(
+                QAFinding(
+                    severity=QASeverity.INFO,
+                    category="citation",
+                    description=(
+                        f"Section {draft.section_id} was human-edited (sync-drafts): the "
+                        "claim→source map may be stale — the reviewer owns the accuracy "
+                        "of edited content."
+                    ),
+                    location=draft.section_id,
+                )
+            )
         for claim in draft.claims:
             if claim.needs_input:
                 findings.append(

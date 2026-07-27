@@ -126,7 +126,8 @@ def run(ctx: RunContext, stop_after: Optional[Stage] = None) -> ProposalState:
                              detail=state.halted_reason)
             break
         state.mark_done(node.stage)
-        write_stage_artifacts(state)
+        for warning in write_stage_artifacts(state):
+            ctx.console.print(f"  [yellow]{warning}[/yellow]")
         ctx.checkpoints.save(state)
         ctx.audit.record("stage_complete", actor="orchestrator", stage=node.stage.value)
         if node.gate_after:

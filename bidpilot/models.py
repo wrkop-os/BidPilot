@@ -321,6 +321,11 @@ class SectionDraft(BaseModel):
     addressed_requirements: list[str] = Field(default_factory=list, description="req_ids")
     claims: list[Claim] = Field(default_factory=list)
     word_count: int = 0
+    human_edited: bool = Field(
+        default=False,
+        description="Set by sync-drafts when a reviewer edited this section on disk — "
+        "the claim map may be stale; the reviewer owns the accuracy of their edits",
+    )
 
 
 class PastPerformanceSelection(BaseModel):

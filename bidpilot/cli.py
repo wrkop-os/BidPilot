@@ -70,6 +70,15 @@ def main(argv: list[str] | None = None) -> int:
     status_p.add_argument("url")
     status_p.add_argument("--out", default="runs")
 
+    sync_p = sub.add_parser("sync-drafts", help="Import reviewer edits from volumes/sections/*.md into the run, then re-run assemble+QA")
+    sync_p.add_argument("url")
+    sync_p.add_argument("--out", default="runs")
+
+    redo_p = sub.add_parser("redo", help="Invalidate a stage (and everything after it) for a targeted re-run")
+    redo_p.add_argument("stage", choices=[s.value for s in Stage])
+    redo_p.add_argument("url")
+    redo_p.add_argument("--out", default="runs")
+
     doctor_p = sub.add_parser("doctor", help="Environment & contract checks (keys, KB, renderer, SAM API)")
     doctor_p.add_argument("--kb", default=None)
     doctor_p.add_argument("--network", action="store_true", help="Also ping the SAM.gov API (NFR-3 contract check)")
@@ -96,6 +105,10 @@ def main(argv: list[str] | None = None) -> int:
         return _costs(args)
     if args.command == "status":
         return _status(args)
+    if args.command == "sync-drafts":
+        return _sync_drafts(args)
+    if args.command == "redo":
+        return _redo(args)
     if args.command == "doctor":
         return _doctor(args)
     return _run(args, analyst_only=(args.command == "analyze"))
@@ -300,6 +313,75 @@ def _costs(args) -> int:
         return 1
     run_cost = compute_costs(audit_path)
     console.print(report_markdown(run_cost))
+    return 0
+
+
+def _load_state_or_fail(args):
+    from .intake.samgov import parse_notice_id
+    from .state import CheckpointStore
+
+    notice_id = parse_notice_id(args.url)
+    run_dir = Path(args.out) / notice_id
+    store = CheckpointStore(run_dir)
+    state = store.load()
+    if state is None:
+        console.print(f"[red]No run found at {run_dir}.[/red]")
+        raise SystemExit(1)
+    return state, store
+
+
+def _sync_drafts(args) -> int:
+    """Reviewer edit loop: import edits from volumes/sections/*.md into the
+    checkpoint, then invalidate assemble+QA+export so `bidpilot run`
+    re-renders and re-verifies the edited package. No model calls."""
+    from .audit import AuditLog
+    from .drafts import sync_drafts
+    from .state import Stage
+
+    state, store = _load_state_or_fail(args)
+    if not state.section_drafts:
+        console.print("[red]This run has no section drafts yet — nothing to sync.[/red]")
+        return 1
+    result = sync_drafts(state)
+    for name in result.missing_files:
+        console.print(f"[yellow]missing on disk: {name}[/yellow]")
+    if not result.updated:
+        console.print(f"No edits found ({result.unchanged} section(s) unchanged).")
+        return 0
+    invalidated = state.invalidate_from(Stage.ASSEMBLE)
+    state.halted_reason = None
+    store.save(state)
+    AuditLog(Path(state.run_dir) / "audit.jsonl").record(
+        "sync_drafts", actor="operator",
+        detail={"updated": result.updated, "invalidated": [s.value for s in invalidated]},
+    )
+    console.print(
+        f"Imported edits to: {', '.join(result.updated)} "
+        f"({result.unchanged} unchanged). Invalidated: "
+        f"{', '.join(s.value for s in invalidated) or '(nothing was complete)'}.\n"
+        "Run [bold]bidpilot run[/bold] to re-render, re-QA, and re-export with your edits."
+    )
+    return 0
+
+
+def _redo(args) -> int:
+    """Targeted re-run: invalidate one stage and everything downstream."""
+    from .audit import AuditLog
+    from .state import Stage
+
+    state, store = _load_state_or_fail(args)
+    stage = Stage(args.stage)
+    invalidated = state.invalidate_from(stage)
+    state.halted_reason = None
+    store.save(state)
+    AuditLog(Path(state.run_dir) / "audit.jsonl").record(
+        "redo", actor="operator",
+        detail={"stage": stage.value, "invalidated": [s.value for s in invalidated]},
+    )
+    console.print(
+        f"Invalidated: {', '.join(s.value for s in invalidated) or '(nothing was complete)'}. "
+        "Run [bold]bidpilot run[/bold] to re-execute."
+    )
     return 0
 
 

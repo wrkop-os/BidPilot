@@ -102,6 +102,17 @@ bidpilot amend <notice-id> && bidpilot run <notice-id>
 # then recompute every downstream number deterministically — no LLM calls
 bidpilot reprice <notice-id>
 
+# Reviewer edit loop (A13): edit runs/<id>/volumes/sections/*.md, then import
+# the edits and re-run assemble+QA+export. The pipeline never clobbers an
+# unsynced edit; edited sections are flagged in QA and the review checklist.
+bidpilot sync-drafts <notice-id> && bidpilot run <notice-id>
+
+# Targeted re-run of one stage (and everything after it)
+bidpilot redo qa <notice-id> && bidpilot run <notice-id>
+
+# Where is this run? Stages, gates, blockers, deliverables — no keys needed
+bidpilot status <notice-id>
+
 # Per-stage / per-model spend for a run vs the NFR-2 $25 budget
 bidpilot costs <notice-id>
 

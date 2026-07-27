@@ -21,10 +21,12 @@ def _write(path: Path, content: str) -> None:
     path.write_text(content, encoding="utf-8")
 
 
-def write_stage_artifacts(state) -> None:
+def write_stage_artifacts(state) -> list[str]:
     """Persist every produced artifact as reviewable files. Called after each
-    stage so a human can inspect/edit between checkpoints."""
+    stage so a human can inspect/edit between checkpoints. Returns warnings
+    (e.g. section files preserved because they hold unsynced human edits)."""
     out = Path(state.run_dir)
+    warnings: list[str] = []
 
     if state.notice:
         _write(out / "notice_package.json", state.notice.model_dump_json(indent=2))
@@ -45,7 +47,14 @@ def write_stage_artifacts(state) -> None:
         for volume, drafts in volumes.items():
             body = "\n\n---\n\n".join(d.markdown for d in drafts)
             _write(out / "volumes" / f"{_slug(volume)}.md",
-                   f"> DRAFT — requires human review. Volume: {volume}\n\n{body}")
+                   f"> DRAFT — requires human review. Volume: {volume}\n"
+                   "> Edit the per-section files in volumes/sections/ (this merged file is regenerated).\n\n"
+                   f"{body}")
+        # Per-section files: the canonical reviewer edit surface, with
+        # clobber protection for unsynced human edits.
+        from .drafts import write_section_files
+
+        warnings.extend(write_section_files(state))
         _write(
             out / "volumes" / "claims_source_map.json",
             json.dumps(
@@ -94,6 +103,7 @@ def write_stage_artifacts(state) -> None:
     from .dashboard import write_dashboard
 
     write_dashboard(state)
+    return warnings
 
 
 def assemble_and_export(state, audit: AuditLog) -> Path:
@@ -217,6 +227,14 @@ def review_checklist(state) -> str:
         lines += [f"- [ ] Resolve: {m}" for m in state.eligibility.missing_info]
     if state.win_strategy:
         lines += [f"- [ ] Confirm assumption: {a}" for a in state.win_strategy.assumptions]
+    edited = [d.section_id for d in state.section_drafts if d.human_edited]
+    if edited:
+        lines.append("")
+        lines.append("## Human-edited sections (claim maps may be stale)")
+        lines += [
+            f"- [ ] Re-verify facts you added/changed in {sid} — your edits, your accuracy"
+            for sid in edited
+        ]
     needs_input = [
         c for d in state.section_drafts for c in d.claims if c.needs_input
     ]
