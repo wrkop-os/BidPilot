@@ -60,6 +60,8 @@ The one module where "LLM writes a number" is unacceptable:
 
 The system cannot write truthful proposals from nothing. The KB (per-tenant YAML directory in v1; pgvector/Postgres is the production target behind the same interface) holds the profile (UEI/CAGE, size data per NAICS, certifications, indirect rates, labor categories), past-performance records with historical actuals, personnel, and reusable content — each with an owner and a last-verified date. **The KB is the only permissible source for company facts:** writers cite entries by `kb_id` or emit `[NEEDS INPUT]`; uncited claims are hard QA failures and the build fails closed.
 
+Two reference KBs ship with the repo: `kb.example/` (minimal, used by the test suite) and `kb.pro/` (production-grade template for a 52-person SDVOSB, with 2025-2026 market-researched labor rates, DCAA-style indirect structure inside competitive wrap bands, SCA compliance doctrine, estimating benchmarks, and BOE methodology — every number sourced in `kb.pro/MARKET_RESEARCH.md`). Copy either as a starting point: `cp -r kb.pro kb`.
+
 ### Everything is auditable (FR-18, NFR-5)
 
 `audit.jsonl` per run records every model call (model, prompt SHA-256, tokens, duration), every stage transition, every human gate decision, and the export. Runs checkpoint after every stage and resume exactly where they stopped (FR-21).

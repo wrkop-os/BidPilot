@@ -1,0 +1,196 @@
+# Reusable content library. Two kinds of entries live here:
+#   1. Narrative boilerplate writers adapt (quality plan, management
+#      approach, capability statement).
+#   2. Estimating/pricing doctrine the estimator and pricer cite in BOEs
+#      (benchmarks, pricing policy, SCA compliance, ODC catalog,
+#      competitive intel). Sources for every number: MARKET_RESEARCH.md.
+- kb_id: content-estimating-benchmarks
+  title: "Estimating benchmarks (service desk and application sustainment)"
+  kind: other
+  text: >
+    SERVICE DESK DEMAND: tickets/user/month typically 0.4-1.0 by industry
+    (MetricNet/HDI desktop range 0.41 healthcare - 0.99 financial); Meridian
+    actual on pp-army-esd was 1.21 including requests. SUPPLY: Tier II
+    average 113 tickets/tech/month (observed range 30-198, MetricNet); Tier
+    I plan at 450-500 contacts/agent/month with utilization NOT above
+    60-70% sustained (industry average utilization is ~48%; assuming 75-80%
+    underprices reality and burns out staff — MetricNet). FCR: industry
+    70-75%, world-class 85%+. COST PER TICKET sanity anchors (2016-2020
+    vintage, inflation-adjust ~20-25% to current dollars): L1 ~$22 -> ~$27
+    now; L2 ~$69 -> ~$85 now; an L1->L2 escalation costs both touches.
+    FTE MATH: workload hrs/mo = tickets x AHT-minutes / 60; agents =
+    workload / (paid hrs/mo x utilization); add Erlang-C concurrency
+    margin for phone service levels — linear math understaffs peak.
+    APPLICATION SUSTAINMENT: annual O&M = 15-25% of original build cost
+    (business-critical 25-40%); Meridian actual on pp-va-portal was 18%.
+    Team shape: Scrum pod of 5-7 engineers + fractional PM/PO; typical
+    ratios 1 PM per 2-4 pods, 1 DevOps per 1-2 pods (convention, not a
+    published benchmark — say so in the BOE if used). PRODUCTIVE HOURS:
+    price salaried direct labor on 2,080 paid hours; bid T&M/LOE at
+    1,880-1,920 productive hours/FTE (Meridian standard: 1,880). Bidding
+    2,080 billable hours per FTE is a price-realism red flag.
+  governance: { owner: "mreyes", last_verified: "2026-07-27" }
+
+- kb_id: content-pricing-policy
+  title: "Pricing policy: wrap-rate guardrails, fee, and escalation"
+  kind: other
+  text: >
+    WRAP GUARDRAILS (fully burdened / direct, incl. fee): contractor-site
+    target 2.00-2.25 (Meridian standing structure computes 2.11); below
+    ~1.9 requires Principal sign-off (understated-indirects risk); above
+    ~2.3 is presumptively uncompetitive in price-sensitive evaluations.
+    Client-site work re-prices with the site overhead pool at 18% (facilities
+    drop out), yielding wrap ~1.73 — always check whether the PWS puts the
+    team on government site before pricing. FEE BY CONTRACT TYPE: FFP 7-10%
+    (risk premium justified); T&M embedded 8-10% of the loaded rate; CPFF
+    negotiate 6-8% (statutory cap 10% under FAR 15.404-4; DoD weighted
+    guidelines typically produce ~8-12% objectives for services).
+    Realized small-business net margins run ~7.6-8% industry-wide — do not
+    promise leadership double digits on competitive services work.
+    ESCALATION: propose 3.0% per option year, citing BLS ECI (recent
+    readings 3.3-3.5%) and 2026 salary-budget surveys (3.2-3.6%); above 4%
+    invites realism downgrades. EXCEPTION — SCA/FFP contracts carrying FAR
+    52.222-43: do NOT pre-price WD wage escalation into option years; the
+    clause warrants base prices contain no contingency and provides the
+    adjustment mechanism at option exercise (wage/fringe delta + FICA/FUTA/
+    SUTA/workers-comp flow-through, no OH/G&A/profit markup, 30-day claim
+    window). GSA MAS ceilings are ceilings: task-order competition typically
+    discounts 5-15% below schedule.
+  governance: { owner: "mreyes", last_verified: "2026-07-27" }
+
+- kb_id: content-sca-compliance
+  title: "SCA/SCLS compliance floors and coverage rules"
+  kind: other
+  text: >
+    HEALTH & WELFARE (DOL AAM 250, effective 2025-07-07): $5.55/hr standard;
+    $5.09/hr on contracts covered by EO 13706 paid sick leave (56 hrs/yr,
+    solicitations from 2017-01-01). Verify the current AAM before pricing —
+    DOL revises each summer. CONTRACTOR MINIMUM WAGE: EO 14026 ($17.75) was
+    rescinded 2025-03-14 (EO 14236) and DOL is not enforcing it; EO 13658
+    ($13.65 effective 2026-05-11) applies only to legacy pre-2022 vehicles.
+    For current solicitations the binding floors are the wage determination
+    rates themselves. WD HANDLING: always fetch the WD revision incorporated
+    in the solicitation (revisions land 2-4x/year; e.g. DC-metro WD 2015-4281
+    was at Rev 35 as of 2025-12); never price from a cached WD table.
+    VACATION/HOLIDAY: standard WD fringe is 2 weeks vacation after 1 year
+    (3 wks @ 5 yrs, 4 wks @ 15 yrs, with predecessor-contractor service
+    credit) and 11 paid holidays; H&W, vacation, and holidays are separately
+    owed (DOL Fact Sheet 67B). COVERAGE: Tier-1 help desk, computer
+    operators (14041-45), and PC support technicians (14160) are SCA-covered
+    regardless of pay rate (DOL FAB 2006-3); software engineers, architects,
+    and design-level sysadmins are exempt under FLSA 13(a)(17) if paid
+    >= $27.63/hr (unchanged, not indexed) or salaried per Part 541 — duties
+    control, titles do not.
+  governance: { owner: "mreyes", last_verified: "2026-07-27" }
+
+- kb_id: content-odc-catalog
+  title: "ODC catalog and travel pricing standards"
+  kind: other
+  text: >
+    TRAVEL: price per the FTR at GSA rates. FY2026 standard CONUS per diem
+    $178/day ($110 lodging + $68 M&IE), first/last travel day M&IE at 75%
+    ($51); use locality rates where the PWS names a duty station. Standard
+    trip template: airfare (city-pair if available) + lodging x nights +
+    M&IE + ground $60/trip. Meridian actual (pp-dhs-cloudmig): cutover
+    support = 2 travelers x 2 trips per workload wave. OTHER ODCS: software
+    licenses, cloud consumption (price from the architecture, never
+    flat-percentage), equipment, and subcontractor handling. There is no
+    defensible industry 'ODC as % of contract value' benchmark — build ODCs
+    bottom-up and say so in the BOE. On GSA Schedule orders, Order-Level
+    Materials are capped at 33.33% of order value. ODCs carry G&A only (no
+    OH, no fee on travel unless the contract type allows).
+  governance: { owner: "mreyes", last_verified: "2026-07-27" }
+
+- kb_id: content-competitive-intel
+  title: "Competitive landscape and evaluation intelligence"
+  kind: other
+  text: >
+    COMPETITION: the average federal solicitation drew ~3.6 offers (FY2024)
+    — baseline P(win) ~28% before discriminators; popular SB set-aside IT
+    work draws more. SOURCE SELECTION: LPTA has declined sharply for IT
+    (DFARS 2019 / FAR 2021 rules require avoiding LPTA for knowledge-based
+    and cyber services); expect best-value tradeoff. When agencies pay a
+    premium for technical merit it is usually single-digit percent (GAO-11-8:
+    of 21 premiums paid in 68 tradeoffs, 12 were <=5%, 7 were 5-20%) — a
+    technically superior offer priced >10% above the field rarely survives
+    the tradeoff.
+    PRICE POSITION: target within ~5% of the should-cost midpoint; win on
+    discriminators, not discounts. CPARS: Satisfactory keeps you eligible
+    but loses tradeoffs — confidence assessments reward Exceptional/Very
+    Good records, which have grown rarer industry-wide; cite ours
+    (pp-gsa-dataplatform, pp-dhs-cloudmig Exceptional; pp-army-esd,
+    pp-va-portal Very Good) with the metrics that earned them. PROTESTS:
+    FY2025 GAO sustain rate 14%, effectiveness 52% — a debrief-then-protest
+    decision is a business-case call, not a reflex. B&P BUDGET: plan ~1.5%
+    of contract value to prepare a competitive proposal; disciplined gate
+    reviews double the odds of >50% win rates (APMP).
+  governance: { owner: "mreyes", last_verified: "2026-07-27" }
+
+- kb_id: content-boe-methodology
+  title: "Basis-of-estimate methodology standards"
+  kind: other
+  text: >
+    Every priced hour traces to one of three methods, named in the BOE:
+    ANALOGY — scale from Meridian historical actuals (preferred; cite the
+    pp-* record and the unit productivity used, e.g. 380 hrs/workload
+    lift-and-shift from pp-dhs-cloudmig, 720 hrs/system migration from
+    pp-gsa-dataplatform, 118 tickets/tech/month from pp-army-esd, 18%
+    sustainment ratio from pp-va-portal). PARAMETRIC — industry benchmark
+    math (cite content-estimating-benchmarks and show the formula:
+    tickets x AHT / utilization). BOTTOM-UP — task decomposition with
+    per-task hours, reserved for novel scope with no analog. Rules: state
+    every assumption a number rests on; flag any parameter with no analog
+    or benchmark as engineering judgment; reconcile total FTEs against the
+    staffing narrative (the QA consistency check will catch mismatches);
+    use 1,880 productive hours/FTE; never let an LLM compute rates or
+    totals — the deterministic pricing engine owns arithmetic.
+  governance: { owner: "mreyes", last_verified: "2026-07-27" }
+
+- kb_id: content-quality-plan
+  title: "Quality management approach"
+  kind: quality_plan
+  text: >
+    Meridian operates an ISO 9001:2015-aligned quality system scaled for a
+    50-person firm. Delivery quality: definition-of-done enforced in CI
+    (peer review + automated tests + security scan gates); release-readiness
+    reviews before every production deployment (zero failed deployments in
+    the final two years of pp-va-portal). Service quality: SLA dashboards
+    reviewed weekly with the COR (96% attainment across 47 service periods
+    on pp-army-esd); corrective-action records for every missed SLA with
+    root cause and prevention. Program quality: monthly internal quality
+    audits against the QASP, and a CPARS-alignment review that walks each
+    evaluation area with the customer before the rating period closes.
+  governance: { owner: "mreyes", last_verified: "2026-07-27" }
+
+- kb_id: content-mgmt-approach
+  title: "Management approach boilerplate"
+  kind: management_approach
+  text: >
+    Single accountable PM with direct Principal escalation (one layer);
+    earned-value-lite tracking on FFP work (schedule/cost variance from the
+    priced BOE); risk register reviewed biweekly with mitigation owners;
+    staffing surge bench maintained at 10% of contract headcount through
+    cross-trained staff and pre-negotiated contingent offers. Transition-in
+    playbook: 30/45/60-day phased knowledge capture with incumbent shadowing
+    (executed in 45 days with zero service interruption on pp-army-esd).
+    Reporting doctrine (lesson institutionalized from pp-dol-isso): monthly
+    deliverables lead with trend analysis and forward risk, not compliance
+    status — proactive reporting is the difference between Satisfactory and
+    Very Good.
+  governance: { owner: "mreyes", last_verified: "2026-07-27" }
+
+- kb_id: content-capability-statement
+  title: "Corporate capability statement"
+  kind: capability_statement
+  text: >
+    Meridian Federal Systems LLC is a Service-Disabled Veteran-Owned Small
+    Business (SDVOSB, SBA VetCert) delivering IT service desk operations,
+    application development and sustainment, cloud migration, DevSecOps,
+    and cybersecurity services to federal civilian and DoD customers.
+    Founded 2011; 52 employees; Arlington, VA. Differentiators: HDI-
+    benchmarked service desk operations (74% FCR, 96% SLA attainment on a
+    6,800-user Army enterprise desk); two CPARS Exceptional cloud/data
+    programs (GSA, DHS/CISA); ATO-in-9-months security delivery; Secret
+    facility clearance; CMMC Level 2 program underway with C3PAO assessment
+    scheduled. Core NAICS: 541511, 541512, 541519, 541611, 518210.
+  governance: { owner: "mreyes", last_verified: "2026-07-27" }

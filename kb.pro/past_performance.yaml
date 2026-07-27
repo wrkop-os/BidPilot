@@ -1,0 +1,122 @@
+# Past performance library — the ONLY source writers may cite for
+# past-performance claims (FR-10). historical_actuals feed analogy
+# estimating (A8): keep them quantitative — hours by category, unit
+# productivities, staffing ratios — not adjectives.
+- kb_id: pp-army-esd
+  customer: "U.S. Army (ACC-Rock Island)"
+  contract_number: "W52P1J-21-C-0087"
+  value: 4600000
+  period: "2021-09 to 2025-08"
+  scope_narrative: >
+    Enterprise service desk operations for 6,800 users across 4 installations:
+    Tier I/II incident and request management (~8,200 tickets/month), ITSM
+    platform administration (ServiceNow), knowledge base management, VIP
+    support, and 24x5 coverage with on-call after-hours rotation. Achieved
+    74% first-contact resolution and 96% SLA attainment across 47 monthly
+    service periods; transitioned-in from incumbent in 45 days with zero
+    service interruption.
+  naics_codes: ["541513", "541519"]
+  cpars_rating: "Very Good"
+  reference_contact: "co.rock-island@army.mil"
+  role: prime
+  historical_actuals: >
+    Steady state staffing: 11 Tier I agents, 6 Tier II techs, 1 service desk
+    lead, 0.5 FTE PM. Tier I averaged 470 contacts/agent/month at 55%
+    utilization and 11-minute average handle time; Tier II averaged 118
+    tickets/tech/month (both consistent with MetricNet/HDI norms: L2 average
+    113 tickets/tech/month, range 30-198). Demand ratio: 1.21
+    tickets/user/month. Priced at 1,880 productive hours/FTE. Fully loaded
+    cost per ticket: $27 Tier I, $86 Tier II (2024 dollars).
+  governance: { owner: "mreyes", last_verified: "2026-07-10" }
+
+- kb_id: pp-gsa-dataplatform
+  customer: "General Services Administration"
+  contract_number: "47QTCA23D0001"
+  value: 2100000
+  period: "2022-11 to 2025-10"
+  scope_narrative: >
+    Data platform modernization: consolidated 15 legacy reporting systems
+    onto an AWS GovCloud analytics platform (S3/Glue/Redshift, dbt, Superset);
+    built ingestion pipelines for 40+ sources; achieved Authority to Operate
+    in 9 months; delivered self-service BI to 300+ analysts. Zero critical
+    security findings across three annual assessments.
+  naics_codes: ["541512", "518210"]
+  cpars_rating: "Exceptional"
+  reference_contact: "platform.cor@gsa.gov"
+  role: prime
+  historical_actuals: >
+    12,400 total labor hours: PM 1,300; Cloud Solutions Architect 900; Senior
+    SWE 4,900; SWE 3,800; DevSecOps 1,500. Per-system migration averaged 720
+    hours (range 380-1,150 by complexity). ATO package effort: 1,100 hours
+    including ISSO support. Team ran two Scrum pods of 5-6 with fractional
+    PM/architect across both.
+  governance: { owner: "mreyes", last_verified: "2026-07-10" }
+
+- kb_id: pp-va-portal
+  customer: "Department of Veterans Affairs"
+  contract_number: "36C10B22N0042"
+  value: 1400000
+  period: "2022-03 to 2025-09"
+  scope_narrative: >
+    Claims-processing web portal sustainment: operated and enhanced a
+    Django/React application serving 60,000 monthly users; Section 508
+    remediation to WCAG 2.1 AA; 99.7% uptime over the period of performance;
+    six-week release cadence with zero failed production deployments in the
+    final two years.
+  naics_codes: ["541511"]
+  cpars_rating: "Very Good"
+  reference_contact: "portal.cor@va.gov"
+  role: subcontractor
+  historical_actuals: >
+    Annual sustainment effort ran 18% of the original build cost — inside
+    the 15-25% industry planning band. Steady-state pod: 0.5 PM, 4
+    developers (1 senior), 0.5 DevSecOps, 0.5 QA. Enhancement throughput:
+    ~140 story-equivalent items/year. 508 remediation averaged 6 hours per
+    template across 240 templates.
+  governance: { owner: "mreyes", last_verified: "2026-07-10" }
+
+- kb_id: pp-dhs-cloudmig
+  customer: "Department of Homeland Security (CISA)"
+  contract_number: "70RCSA23FR0000114"
+  value: 3200000
+  period: "2023-06 to 2026-05"
+  scope_narrative: >
+    AWS GovCloud migration for a CISA mission-support portfolio: built the
+    landing zone (multi-account, Control Tower, centralized logging/SIEM
+    integration), migrated 42 workloads (28 lift-and-shift, 14 replatformed
+    to containers/managed services), and stood up the DevSecOps pipeline the
+    sustainment teams now operate. FinOps rightsizing cut steady-state
+    compute spend 31% against the pre-migration baseline.
+  naics_codes: ["541512", "541519"]
+  cpars_rating: "Exceptional"
+  reference_contact: "cloudpmo@cisa.dhs.gov"
+  role: prime
+  historical_actuals: >
+    Landing zone: 1,600 hours. Lift-and-shift migrations averaged 380
+    hours/workload; replatform migrations averaged 900 hours/workload.
+    Pipeline build: 1,200 hours. Peak team: 1 PM, 1 Cloud Architect, 2
+    DevSecOps, 3 SWE, 1 ISSO (0.5). Cutover weekends required 2-person
+    on-site travel, 2 trips per workload wave.
+  governance: { owner: "mreyes", last_verified: "2026-07-10" }
+
+- kb_id: pp-dol-isso
+  customer: "Department of Labor (OCIO)"
+  contract_number: "1605DC-22-F-00291"
+  value: 1100000
+  period: "2022-10 to 2025-09"
+  scope_narrative: >
+    ISSO and continuous-monitoring support for a 9-system FISMA portfolio:
+    RMF step execution, POA&M management (closed 210 of 260 inherited
+    POA&Ms), annual assessment support, and eMASS/CSAM records maintenance.
+  naics_codes: ["541519", "541690"]
+  cpars_rating: "Satisfactory"
+  reference_contact: "ociosecurity@dol.gov"
+  role: subcontractor
+  historical_actuals: >
+    2.5 FTE ISSO coverage across 9 systems (~0.28 FTE/system for
+    moderate-baseline systems). POA&M closure averaged 11 hours each.
+    Lesson learned (why the rating is Satisfactory, not higher): reporting
+    was compliant but not proactive — the corrective playbook (monthly
+    trend-driven briefings to the ISSM) is now standard in
+    content-mgmt-approach and should be cited in management narratives.
+  governance: { owner: "mreyes", last_verified: "2026-07-10" }

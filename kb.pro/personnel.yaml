@@ -1,0 +1,67 @@
+# Key personnel records — the ONLY source writers may cite for staffing
+# claims. Resume summaries stay factual and quantitative.
+- kb_id: person-mreyes
+  name: "Marcus Reyes"
+  role: "Founder / Principal, Capture and Delivery Oversight"
+  clearance: "Secret"
+  resume_summary: >
+    45+ years in federal contracting (industry since 1980): rose from
+    contract administrator to VP of programs at two mid-tier defense
+    services firms before founding Meridian in 2011. Has priced or
+    approved 300+ competitive federal proposals and served as the
+    responsible manager on contracts totaling over $400M lifetime value.
+    Institutionalized the gate-review discipline (pursuit/bid/final) and
+    the wrap-rate guardrails Meridian prices against.
+  certifications: ["NCMA CPCM", "PMP"]
+  governance: { owner: "mreyes", last_verified: "2026-07-27" }
+
+- kb_id: person-dwashington
+  name: "Dana Washington"
+  role: "Program Manager"
+  clearance: "Secret"
+  resume_summary: >
+    18 years managing federal IT services programs; PM of record on
+    pp-army-esd (6,800-user service desk, 96% SLA attainment) and
+    pp-gsa-dataplatform (CPARS Exceptional). Manages to earned-value-lite
+    metrics on FFP work and runs the monthly CPARS-alignment review with
+    every COR.
+  certifications: ["PMP", "ITIL 4 Managing Professional", "SAFe 6 Agilist"]
+  governance: { owner: "mreyes", last_verified: "2026-07-27" }
+
+- kb_id: person-kpatel
+  name: "Kiran Patel"
+  role: "Cloud Solutions Architect"
+  clearance: "Public Trust (T4)"
+  resume_summary: >
+    14 years cloud and platform engineering; architect of record for
+    pp-dhs-cloudmig (42-workload GovCloud migration, 31% compute-spend
+    reduction) and the pp-gsa-dataplatform landing zone. Designs to
+    FedRAMP-inherited controls and writes the technical volumes' reference
+    architectures personally.
+  certifications: ["AWS Solutions Architect Professional", "AWS Security Specialty", "HashiCorp Terraform Associate"]
+  governance: { owner: "mreyes", last_verified: "2026-07-27" }
+
+- kb_id: person-lchen
+  name: "Lauren Chen"
+  role: "Cybersecurity Lead / Senior ISSO"
+  clearance: "Top Secret"
+  resume_summary: >
+    12 years in federal cybersecurity; led the 9-system FISMA portfolio on
+    pp-dol-isso (210 POA&M closures) and authored the ATO package for
+    pp-gsa-dataplatform (ATO in 9 months). Runs Meridian's internal CMMC
+    Level 2 program.
+  certifications: ["CISSP", "CAP/CGRC", "CompTIA CySA+"]
+  governance: { owner: "mreyes", last_verified: "2026-07-27" }
+
+- kb_id: person-tobrien
+  name: "Terry O'Brien"
+  role: "Service Desk Operations Manager"
+  clearance: null
+  resume_summary: >
+    15 years running enterprise service desks (government and commercial);
+    operations manager on pp-army-esd — built the staffing model (470
+    contacts/agent/month Tier I at 55% utilization, 118 tickets/tech/month
+    Tier II) and the knowledge program that drove first-contact resolution
+    from 61% to 74% in 14 months.
+  certifications: ["HDI Support Center Manager", "ITIL 4 Foundation", "KCS v6 Practices"]
+  governance: { owner: "mreyes", last_verified: "2026-07-27" }

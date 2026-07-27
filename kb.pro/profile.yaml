@@ -1,0 +1,117 @@
+# Meridian Federal Systems LLC — production-grade company profile.
+#
+# Every rate in this file is grounded in 2025-2026 market research; see
+# kb.pro/MARKET_RESEARCH.md for the full sourcing (BLS OEWS May 2024 direct
+# wages + DC-metro premium, GSA CALC/MAS awarded ceilings, Deltek Clarity /
+# GAUGE-era indirect-rate norms). Governance: keep last_verified fresh —
+# stale entries are flagged by `bidpilot doctor` / kb.stale_entries().
+kb_id: profile
+name: "Meridian Federal Systems LLC"
+uei: "MFS7K2L4Q7R3"
+cage_code: "7MF45"
+address: "1655 N Fort Myer Dr, Suite 700, Arlington, VA 22209"
+poc_name: "Marcus Reyes"
+poc_email: "proposals@meridianfedsys.com"
+poc_phone: "(703) 555-0188"
+
+naics_codes: ["541511", "541512", "541519", "541611", "518210"]
+size_status_by_naics:
+  "541511": small
+  "541512": small
+  "541519": small
+  "541611": small
+  "518210": small
+annual_receipts_avg: 9400000        # 5-yr average annual receipts, dollars
+employee_count: 52
+socioeconomic_certifications: ["SDVOSB"]
+sam_registration_active: true
+facility_clearance: "Secret"
+cmmc_level: "Level 2 (self-assessment complete; C3PAO assessment scheduled Q4 FY2026)"
+bonding_capacity: null
+size_data_verified_date: "2026-07-27"
+
+capabilities:
+  - "Enterprise IT service desk operations (Tier I-III), ITIL v4-aligned, HDI-benchmarked"
+  - "Full-stack web application development and sustainment (Python/Django, TypeScript/React, Java)"
+  - "Cloud migration and operations in AWS GovCloud and Azure Government (landing zones, ATO support)"
+  - "DevSecOps pipeline engineering (GitLab CI, IaC with Terraform, container platforms)"
+  - "Cybersecurity: ISSO support, RMF/ATO packages, continuous monitoring, POA&M management"
+  - "Data engineering, analytics pipelines, and BI dashboarding"
+  - "Section 508 accessibility auditing and remediation"
+  - "Agile delivery at scale (Scrum/SAFe) for federal civilian and DoD customers"
+
+# Direct (unburdened) hourly rates. Basis: BLS OEWS May 2024 national
+# medians by SOC code, uplifted for the DC-metro market (+15-20%; BLS
+# all-occupation DC premium is +33%, IT roles typically +10-25%) and
+# calibrated so burdened rates (x2.11 wrap, see indirect_rates) land inside
+# observed GSA CALC/MAS awarded bands. SCA-covered categories note their
+# compliance treatment; all others satisfy the FLSA 13(a)(17) computer
+# professional exemption ($27.63/hr floor) or Part 541 duties tests.
+labor_categories:
+  - title: "Program Manager"
+    direct_rate: 95.00
+    description: "BLS 11-3021 median $82.31 national; DC senior PM market. Burdened ~$201 vs GSA CALC PM avg ~$166, awarded range $150-$265."
+  - title: "Project Manager"
+    direct_rate: 62.00
+    description: "BLS 13-1082 median $48.44 national; DC + PMP premium. Burdened ~$131 vs MAS band $120-$185."
+  - title: "Senior Systems Engineer"
+    direct_rate: 80.00
+    description: "BLS 15-1241 proxy median $62.69. Burdened ~$169 vs awarded Sr Systems Engineer $194.77 ceiling."
+  - title: "Cloud Solutions Architect"
+    direct_rate: 90.00
+    description: "Architect-tier premium over 15-1241. Burdened ~$190 vs derived market band $150-$230."
+  - title: "Senior Software Engineer"
+    direct_rate: 84.00
+    description: "BLS 15-1252 75th-90th pct ~$80-95. Burdened ~$178 vs CALC upper band $145-$166+ and awarded highs to $232."
+  - title: "Software Engineer"
+    direct_rate: 66.00
+    description: "BLS 15-1252 median $63.98 + DC uplift. Burdened ~$140 vs CALC SWE average ~$124, band $110-$145."
+  - title: "Junior Software Engineer"
+    direct_rate: 50.00
+    description: "BLS 15-1252 25th pct ~$49-52. Burdened ~$106 vs CALC low band $82-$110. Above $27.63 exemption floor."
+  - title: "DevSecOps Engineer"
+    direct_rate: 78.00
+    description: "Market $160-210K senior band (~$77-100/hr); commands premium over generic SWE. Burdened ~$165 within derived $140-$220 band."
+  - title: "Cybersecurity Analyst / ISSO"
+    direct_rate: 68.00
+    description: "BLS 15-1212 median $60.05 + DC/clearance uplift. Burdened ~$144 vs analyst/ISSO band $115-$180."
+  - title: "Data Scientist"
+    direct_rate: 64.00
+    description: "BLS 15-2051 median $54.13 + DC uplift. Burdened ~$135 vs awarded Data Scientist I $165.90 ceiling."
+  - title: "Database Administrator"
+    direct_rate: 56.00
+    description: "BLS 15-1242 median $50.30. Burdened ~$118 vs awarded DBA $139-$146."
+  - title: "Business Analyst"
+    direct_rate: 54.00
+    description: "BLS 15-1211 proxy median $49.90. Burdened ~$114 vs awarded BA band $94-$133."
+  - title: "QA/Test Engineer"
+    direct_rate: 54.00
+    description: "BLS 15-1253 median $49.33. Burdened ~$114 vs awarded QA Analyst III $106.15."
+  - title: "Technical Writer"
+    direct_rate: 48.00
+    description: "BLS 27-3042 median $44.07. Burdened ~$102 vs awarded IT Tech Writer Mid $80.97-$120 band."
+  - title: "Help Desk Technician II"
+    direct_rate: 34.00
+    description: "SCA-covered (SCA Directory 14160/14170 family; BLS 15-1231 median $35.26). Wage floor = max(company rate, current WD rate); + $5.55/hr H&W (AAM 250), 11 holidays, SCA vacation. Never priced below the WD."
+  - title: "Help Desk Technician I"
+    direct_rate: 28.00
+    description: "SCA-covered (SCA Directory 14160 Personal Computer Support Technician; BLS 15-1232 median $29.01). Wage floor = max(company rate, current WD rate); + $5.55/hr H&W (AAM 250). Never priced below the WD."
+
+# 3-tier DCAA-style structure (fringe / contractor-site overhead / G&A on
+# TCI), inside the advisory-consensus bands for a 50-person services firm:
+# fringe 25-40% (consensus mid ~30-32), OH 30-50% contractor-site, G&A 8-15%,
+# services fee 5-8%. Compounded wrap = 1.31 x 1.36 x 1.11 x 1.07 = 2.11 —
+# inside the competitive 2.00-2.25 DC-metro small-business band (below ~2.0
+# reads aggressive, above ~2.3 loses LPTA). Client-site work re-prices with
+# the ~18% site overhead pool per content-pricing-policy. Escalation 3.0%
+# tied to BLS ECI (trailing readings 3.3-3.5%).
+indirect_rates:
+  fringe: 0.31
+  overhead: 0.36
+  gna: 0.11
+  fee: 0.07
+  escalation_per_year: 0.03
+
+governance:
+  owner: "mreyes"
+  last_verified: "2026-07-27"
