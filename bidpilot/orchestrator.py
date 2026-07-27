@@ -456,21 +456,25 @@ def _count_option_years(structure) -> int:
     return years
 
 
+def _render_volumes(ctx: RunContext) -> None:
+    """Render all volumes to DOCX (+ exact-page PDF when LibreOffice exists),
+    named per convention (FR-15). Used by assemble and after QA redrafts."""
+    from .models import FormatConstraints
+
+    state = ctx.state
+    state.rendered_volumes = rendering.render_all_volumes(
+        state.section_drafts,
+        state.matrix.constraints if state.matrix else FormatConstraints(),
+        Path(state.run_dir) / "rendered",
+        solicitation_number=state.notice.metadata.solicitation_number if state.notice else None,
+        company=ctx.kb.profile.name,
+    )
+
+
 def _assemble(ctx: RunContext) -> None:
-    """Render volumes to DOCX (+ exact-page PDF when LibreOffice exists),
-    named per convention (FR-15). Markdown sources stay alongside."""
     state = ctx.state
     if state.section_drafts:
-        constraints = state.matrix.constraints if state.matrix else None
-        from .models import FormatConstraints
-
-        state.rendered_volumes = rendering.render_all_volumes(
-            state.section_drafts,
-            constraints or FormatConstraints(),
-            Path(state.run_dir) / "rendered",
-            solicitation_number=state.notice.metadata.solicitation_number if state.notice else None,
-            company=ctx.kb.profile.name,
-        )
+        _render_volumes(ctx)
         for rv in state.rendered_volumes:
             pages = f"{rv.page_count} pages (exact)" if rv.page_count else f"~{rv.estimated_pages:.0f} pages (estimate)"
             ctx.console.print(f"  rendered {Path(rv.docx_path).name}: {pages}")
@@ -530,15 +534,7 @@ def _qa(ctx: RunContext) -> None:
         )
         _redraft(ctx, fixable, findings)
         if state.rendered_volumes:  # keep rendered files in sync with redrafts
-            from .models import FormatConstraints
-
-            state.rendered_volumes = rendering.render_all_volumes(
-                state.section_drafts,
-                state.matrix.constraints if state.matrix else FormatConstraints(),
-                Path(state.run_dir) / "rendered",
-                solicitation_number=state.notice.metadata.solicitation_number if state.notice else None,
-                company=ctx.kb.profile.name,
-            )
+            _render_volumes(ctx)
 
     ctx.console.print("  LLM audits: consistency, citation sampling, mock evaluation…")
     report.findings += qa.consistency_audit(ctx.router, state.section_drafts, state.pricing)
