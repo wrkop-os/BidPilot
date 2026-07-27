@@ -21,7 +21,7 @@ from typing import Optional
 
 import httpx
 
-from ..models import AmendmentRecord, AttachmentRecord, NoticeMetadata
+from ..models import AttachmentRecord, NoticeMetadata
 
 SEARCH_API = "https://api.sam.gov/opportunities/v2/search"
 RESOURCES_API = "https://sam.gov/api/prod/opps/v3/opportunities/{notice_id}/resources"
@@ -106,6 +106,11 @@ class SamGovClient:
         data = self._search({"solnum": solnum, "limit": 100})
         return data.get("opportunitiesData") or []
 
+    def search_raw(self, params: dict) -> dict:
+        """Public cached search against the Opportunities API v2 — used by
+        discovery and the doctor contract check."""
+        return self._search(params)
+
     def notice_metadata(self, notice_id: str) -> NoticeMetadata:
         record = self.get_notice(notice_id)
         meta = NoticeMetadata(notice_id=notice_id)
@@ -135,9 +140,7 @@ class SamGovClient:
 
     def list_resources(self, notice_id: str) -> list[dict]:
         try:
-            resp = self._get(RESOURCES_API.format(notice_id=notice_id))
-            resp.raise_for_status()
-            payload = resp.json()
+            payload = self._get(RESOURCES_API.format(notice_id=notice_id)).json()
         except Exception:
             return []
         embedded = payload.get("_embedded") or {}

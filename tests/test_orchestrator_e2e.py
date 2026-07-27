@@ -16,7 +16,6 @@ from bidpilot.models import (
     Citation,
     Claim,
     Classification,
-    ComplianceMatrix,
     EligibilityReport,
     FarRegime,
     FormatConstraints,

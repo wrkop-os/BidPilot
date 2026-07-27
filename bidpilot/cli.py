@@ -25,7 +25,7 @@ from pathlib import Path
 from rich.console import Console
 
 from .kb.store import load_kb
-from .orchestrator import build_graph, invalidate_for_amendment, make_context, run
+from .orchestrator import invalidate_for_amendment, make_context, run
 from .routing import RefusalError
 from .state import Stage
 
@@ -255,8 +255,6 @@ def _reprice(args) -> int:
     """§9.7 estimator review loop: human edits hours/lines in
     pricing/pricing_model.json (the `estimate` block); this recomputes every
     downstream number deterministically — no LLM calls."""
-    import json
-
     from .assembly import write_stage_artifacts
     from .pricing import rates as rates_mod
     from .pricing.models import PricingModel
@@ -484,7 +482,7 @@ def _doctor(args) -> int:
         sam = SamGovClient()
         record = None
         try:
-            data = sam._search({"limit": 1, "ptype": "o"})
+            data = sam.search_raw({"limit": 1, "ptype": "o"})
             record = (data.get("opportunitiesData") or [None])[0]
         except Exception as exc:
             check("SAM.gov Opportunities API contract", False, str(exc))

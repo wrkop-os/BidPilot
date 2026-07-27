@@ -3,7 +3,6 @@ from pathlib import Path
 from bidpilot.agents.submission import sheet_to_markdown
 from bidpilot.data.portal_playbooks import playbook_for, playbook_markdown
 from bidpilot.models import (
-    Citation,
     QAFinding,
     QASeverity,
     SectionDraft,

@@ -119,7 +119,7 @@ def discover(
     seen: set[str] = set()
     results: list[ScreenedOpportunity] = []
     for naics in profile.naics_codes or []:
-        data = sam._search(  # deliberate reuse of the cached search path
+        data = sam.search_raw(
             {
                 "ncode": naics,
                 "postedFrom": posted_from,

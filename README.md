@@ -155,6 +155,25 @@ python -m evals.harness runs/<id>/compliance_matrix.json evals/corpus/<slug>/gol
 
 The harness scores requirement **recall** against hand-built gold matrices (G2 target ≥ 98% — misses are catastrophic, extra rows are cheap). `evals/collect.py` snapshots a notice (API JSON + attachments + gold-matrix template + ROI-timing notes) into the frozen corpus. Phase 0's 25-item corpus and 5 gold artifact sets live in `evals/corpus/` (not committed; see the PRD's Phase 0 plan — *do not skip it*).
 
+## State of the build
+
+Everything above is implemented and covered by 114 deterministic tests (no
+network, no keys), including end-to-end pipeline runs with fake models and
+with real DOCX/XLSX/fillable-PDF fixture attachments. What the codebase now
+needs to advance is **real-world input, not more code**:
+
+1. **Keys** — `SAM_GOV_API_KEY` (free, via a SAM.gov account) and
+   `ANTHROPIC_API_KEY`, then a first live run: `bidpilot doctor --network`,
+   `bidpilot discover`, `bidpilot analyze <url>`.
+2. **Phase 0** — freeze the 25-solicitation corpus (`python -m evals.collect`)
+   and hand-build the 5 gold artifact sets; wire the recall sweep into the
+   merge cadence. *The PRD is explicit: do not skip this.*
+3. **A design partner** — live opportunities through the Analyst MVP first,
+   then drafting; every live failure becomes a corpus item + test.
+4. **Infra when scale demands it** — Postgres/pgvector behind
+   `CheckpointStore`/`KnowledgeBase`/`SearchIndex`, the React reviewer UI,
+   multi-tenancy (Phase 4).
+
 ## What's deliberately NOT here (v1 non-goals)
 
 Autonomous submission (NG1 — hard product principle), CUI/classified processing (NG2 — halt-and-notify path instead), authenticated-portal flows like eBuy (NG3/v2), grants (NG4), teaming marketplace (NG5), win guarantees (NG6).

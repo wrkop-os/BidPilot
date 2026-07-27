@@ -1,5 +1,4 @@
 import json
-from pathlib import Path
 
 from bidpilot.amendments import archive_doc_tree, diff_doc_trees, load_archived_doc_tree
 from bidpilot.discover import prescreen

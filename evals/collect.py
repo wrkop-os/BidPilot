@@ -10,7 +10,6 @@ Creates: evals/corpus/<slug>/{api_snapshot.json, attachments/, gold_matrix.csv}
 
 from __future__ import annotations
 
-import json
 import sys
 from pathlib import Path
 

@@ -1,7 +1,6 @@
 """NFR-3 retry/backoff in the SAM.gov client + the FR-1 manual-upload
 fallback (files dropped into the attachments dir get picked up)."""
 
-import json
 from pathlib import Path
 
 import httpx
@@ -104,7 +103,7 @@ def test_search_goes_through_retry_path(tmp_path):
 
     client, _ = _client_with(handler)
     client.cache_dir = tmp_path
-    data = client._search({"noticeid": "A" * 32})
+    data = client.search_raw({"noticeid": "A" * 32})
     assert data["opportunitiesData"][0]["noticeId"] == "A" * 32
     assert len(calls) == 2
 
