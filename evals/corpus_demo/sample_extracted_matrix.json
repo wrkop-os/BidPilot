@@ -1,0 +1,13 @@
+{
+  "requirements": [
+    {"req_id": "L-1", "verbatim_text": "The offeror shall submit Volume I (Technical) not to exceed twenty (20) pages.", "source": {"doc": "RFP.pdf", "section": "L.4", "page": 41}, "category": "format"},
+    {"req_id": "L-2", "verbatim_text": "Text shall be single-spaced, 12-point Times New Roman, with one-inch margins.", "source": {"doc": "RFP.pdf", "section": "L.4", "page": 41}, "category": "format"},
+    {"req_id": "L-3", "verbatim_text": "Proposals shall be submitted via email to the Contract Specialist no later than 2:00 PM Eastern Time on the closing date.", "source": {"doc": "RFP.pdf", "section": "L.5", "page": 42}, "category": "administrative"},
+    {"req_id": "L-4", "verbatim_text": "The offeror shall describe its technical approach to each task in PWS Section 3.", "source": {"doc": "RFP.pdf", "section": "L.6", "page": 43}, "category": "content"},
+    {"req_id": "L-5", "verbatim_text": "The offeror shall provide three (3) past performance references for contracts of similar size and scope performed within the last five (5) years.", "source": {"doc": "RFP.pdf", "section": "L.6", "page": 43}, "category": "content"},
+    {"req_id": "M-1", "verbatim_text": "The Government will evaluate the soundness and feasibility of the offeror's technical approach.", "source": {"doc": "RFP.pdf", "section": "M.2", "page": 47}, "category": "evaluation"},
+    {"req_id": "M-2", "verbatim_text": "Past performance will be evaluated for recency, relevancy, and quality.", "source": {"doc": "RFP.pdf", "section": "M.3", "page": 47}, "category": "evaluation"},
+    {"req_id": "K-1", "verbatim_text": "The offeror shall complete the representation at FAR 52.204-24 regarding covered telecommunications equipment.", "source": {"doc": "RFP.pdf", "section": "K", "page": 35}, "category": "administrative"},
+    {"req_id": "REQ-001", "verbatim_text": "Invoices shall be submitted monthly in arrears.", "source": {"doc": "RFP.pdf", "section": "G", "page": 20}, "category": "administrative"}
+  ]
+}

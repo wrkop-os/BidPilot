@@ -554,12 +554,15 @@ def _qa(ctx: RunContext) -> None:
 
 
 def _fixable_sections(state: ProposalState, findings) -> list[str]:
-    section_ids = {d.section_id for d in state.section_drafts}
+    # Never auto-redraft a human-edited section — a redraft would silently
+    # discard the reviewer's work. Their hard findings stay in the QA report
+    # and route to the human instead.
+    machine_sections = {d.section_id for d in state.section_drafts if not d.human_edited}
     return sorted(
         {
             f.location
             for f in findings
-            if f.severity.value == "hard" and f.location in section_ids and not f.resolved
+            if f.severity.value == "hard" and f.location in machine_sections and not f.resolved
         }
     )
 

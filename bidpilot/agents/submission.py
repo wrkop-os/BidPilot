@@ -71,6 +71,15 @@ def sheet_to_markdown(sheet: SubmissionSheet) -> str:
         lines += [f"- {s}" for s in sheet.special_instructions]
     if sheet.confidence_notes:
         lines.append(f"\n## ⚠️ Verify before submitting\n{sheet.confidence_notes}")
+
+    # Portal-specific delivery playbook (Phase 5.3) — deterministic guidance
+    # for the mechanics of this channel; still human-executed.
+    from ..data.portal_playbooks import playbook_for, playbook_markdown
+
+    playbook = playbook_for(sheet.channel)
+    if playbook:
+        lines.append(playbook_markdown(playbook))
+
     lines.append(
         "\n---\n*BidPilot never submits. A human verifies these instructions "
         "against the latest amendment and delivers the package.*"

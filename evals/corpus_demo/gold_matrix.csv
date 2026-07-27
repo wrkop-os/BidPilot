@@ -1,0 +1,9 @@
+req_id,category,source,verbatim_text,owner_section,notes
+L-1,format,"RFP §L.4 p.41","The offeror shall submit Volume I (Technical) not to exceed twenty (20) pages.",TECH,
+L-2,format,"RFP §L.4 p.41","Text shall be single-spaced, 12-point Times New Roman, with one-inch margins.",ALL,
+L-3,administrative,"RFP §L.5 p.42","Proposals shall be submitted via email to the Contract Specialist no later than 2:00 PM Eastern Time on the closing date.",ADMIN,
+L-4,content,"RFP §L.6 p.43","The offeror shall describe its technical approach to each task in PWS Section 3.",TECH,
+L-5,content,"RFP §L.6 p.43","The offeror shall provide three (3) past performance references for contracts of similar size and scope performed within the last five (5) years.",PP,
+M-1,evaluation,"RFP §M.2 p.47","The Government will evaluate the soundness and feasibility of the offeror's technical approach.",TECH,
+M-2,evaluation,"RFP §M.3 p.47","Past performance will be evaluated for recency, relevancy, and quality.",PP,
+K-1,administrative,"RFP §K p.35","The offeror shall complete the representation at FAR 52.204-24 regarding covered telecommunications equipment.",FORMS,
