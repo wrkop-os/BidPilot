@@ -55,11 +55,17 @@ def train(output_root: Path, model_out: Path) -> dict:
 
     proba = [p[1] for p in model.predict_proba(X_test)]
     heur = [heuristic_score(PwinFeatures(**r["features"])) for r in test_rows]
+    import hashlib
+    import time
+
+    outcomes_file = output_root / "ml_outcomes.jsonl"
     metrics = {
         "n_train": len(train_rows),
         "n_test": len(test_rows),
         "feature_order": FEATURE_ORDER,
         "seed": SEED,
+        "dataset_sha256": hashlib.sha256(outcomes_file.read_bytes()).hexdigest(),
+        "trained_at": time.time(),
         "accuracy": round(accuracy_score(y_test, [p >= 0.5 for p in proba]), 3),
         "brier_model": round(brier_score_loss(y_test, proba), 4),
         "brier_heuristic_baseline": round(brier_score_loss(y_test, heur), 4),

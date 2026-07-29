@@ -102,12 +102,23 @@ def heuristic_score(features: PwinFeatures) -> float:
     return round(min(0.65, max(0.02, p)), 3)
 
 
+def _promoted(model_path: str) -> None:
+    """Fail-closed promotion check: the trainer's metrics sidecar must exist
+    and say ships=true (Brier beat the heuristic), else the artifact does
+    not serve — no sidecar, no service."""
+    sidecar = Path(model_path).with_suffix(".metrics.json")
+    metrics = json.loads(sidecar.read_text(encoding="utf-8"))
+    if metrics.get("ships") is not True:
+        raise RuntimeError("artifact not promoted (metrics ships!=true)")
+
+
 def score(features: PwinFeatures) -> PwinEstimate:
     model_path = os.environ.get("BIDPILOT_PWIN_MODEL")
     if model_path:
         try:
             import joblib
 
+            _promoted(model_path)
             model = joblib.load(model_path)
             p = float(model.predict_proba([features.vector()])[0][1])
             return PwinEstimate(

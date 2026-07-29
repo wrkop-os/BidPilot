@@ -109,6 +109,10 @@ def main(argv: list[str] | None = None) -> int:
     mle_e.add_argument("--dataset-dir", default="mle_datasets")
     mle_e.add_argument("--stage-prefix", default=None, help="e.g. 'shred' or 'produce.write'")
     mle_e.add_argument("--val-fraction", type=float, default=0.1)
+    mle_g = mle_sub.add_parser("gate", help="Fail-closed promotion gate: score extracted matrix vs gold (G2 recall)")
+    mle_g.add_argument("extracted", help="compliance_matrix.json produced by the candidate model")
+    mle_g.add_argument("gold", help="gold_matrix.csv")
+    mle_g.add_argument("--record", default="mle_datasets/promotion_record.json")
 
     args = parser.parse_args(argv)
 
@@ -175,6 +179,17 @@ def _serve(args) -> int:
 
 def _mle(args) -> int:
     from .mle import collect_runs, export_chat_jsonl
+
+    if args.mle_command == "gate":
+        from .mle.promotion import gate_custom_llm
+
+        record = gate_custom_llm(Path(args.extracted), Path(args.gold), Path(args.record))
+        console.print(
+            f"recall {record['metrics']['recall']:.1%} vs gate >= 98% -> "
+            f"{'[green]PROMOTED[/green]' if record['passed'] else '[red]NOT PROMOTED[/red]'}"
+            f" (record: {args.record})"
+        )
+        return 0 if record["passed"] else 1
 
     examples, stats = collect_runs(Path(args.out))
     print(
