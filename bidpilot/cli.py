@@ -89,6 +89,11 @@ def main(argv: list[str] | None = None) -> int:
     init_p = sub.add_parser("init-kb", help="Create a KB directory from the example")
     init_p.add_argument("path", nargs="?", default="kb")
 
+    bp_p = sub.add_parser("benchmark-price", help="Position the run's priced total against FPDS award history (advisory)")
+    bp_p.add_argument("url")
+    bp_p.add_argument("--out", default="runs")
+    bp_p.add_argument("--pages", type=int, default=3, help="FPDS feed pages to pull (10 awards each)")
+
     out_p = sub.add_parser("outcome", help="Record a bid outcome (won/lost/no_bid) as P(win) training data")
     out_p.add_argument("url")
     out_p.add_argument("outcome", choices=["won", "lost", "no_bid"])
@@ -116,6 +121,8 @@ def main(argv: list[str] | None = None) -> int:
 
     args = parser.parse_args(argv)
 
+    if args.command == "benchmark-price":
+        return _benchmark_price(args)
     if args.command == "outcome":
         return _outcome(args)
     if args.command == "serve":
@@ -143,6 +150,33 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "doctor":
         return _doctor(args)
     return _run(args, analyst_only=(args.command == "analyze"))
+
+
+def _benchmark_price(args) -> int:
+    from .intake.fpds import FpdsClient, price_position, save_awards
+
+    state, _ = _load_state_or_fail(args)
+    if not (state.pricing and state.pricing.total):
+        console.print("[red]Run has no priced total yet — run the pipeline through produce first.[/red]")
+        return 1
+    meta = state.notice.metadata
+    if not meta.naics_code:
+        console.print("[red]Notice has no NAICS code — nothing comparable to search.[/red]")
+        return 1
+    run_dir = Path(state.run_dir)
+    client = FpdsClient(cache_dir=run_dir / "api_cache")
+    awards = client.search_awards(meta.naics_code, pages=args.pages)
+    position = price_position(state.pricing.total, awards)
+    save_awards(awards, run_dir / "pricing" / "fpds_awards.json")
+    (run_dir / "PRICE_POSITION.md").write_text(
+        "# Price position (FPDS award history)\n\n"
+        f"{position['advisory']}\n\n"
+        f"Source: FPDS ATOM feed, NAICS {meta.naics_code}, {position['n']} awards "
+        "with dollar values. Raw records: pricing/fpds_awards.json\n",
+        encoding="utf-8",
+    )
+    console.print(position["advisory"])
+    return 0
 
 
 def _outcome(args) -> int:
@@ -328,7 +362,7 @@ def _discover(args) -> int:
     from rich.table import Table
 
     table = Table(title=f"Opportunities — last {args.days} days, pre-screened")
-    for col in ("Screen", "Title", "NAICS", "Set-aside", "Deadline", "URL"):
+    for col in ("Screen", "P(win)", "Title", "NAICS", "Set-aside", "Deadline", "URL"):
         table.add_column(col, overflow="fold")
     shown = 0
     for opp in results:
@@ -337,6 +371,7 @@ def _discover(args) -> int:
         style = {"candidate": "green", "review": "yellow", "blocked": "red"}[opp.screen]
         table.add_row(
             f"[{style}]{opp.screen}[/{style}]",
+            f"~{opp.pwin:.0%}" if opp.pwin is not None else "?",
             opp.title[:70], opp.naics or "?", opp.set_aside or "—",
             opp.deadline or "?", opp.url,
         )

@@ -23,7 +23,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
           cache: pip
       - name: Install
-        run: pip install -e ".[dev,tables]"
+        run: pip install -e ".[dev,tables,ml]"
       - name: Run tests
         run: python -m pytest -q
       - name: CLI smoke

@@ -40,6 +40,7 @@ class ScreenedOpportunity:
     screen: str = "candidate"          # candidate | blocked | review
     reasons: list[str] = field(default_factory=list)
     url: str = ""
+    pwin: Optional[float] = None       # heuristic advisory, ranks within a bucket
 
 
 def prescreen(record: dict, profile: CompanyProfile, today: Optional[_dt.date] = None) -> ScreenedOpportunity:
@@ -64,6 +65,7 @@ def prescreen(record: dict, profile: CompanyProfile, today: Optional[_dt.date] =
     if deadline_date and deadline_date < today:
         opp.screen = "blocked"
         opp.reasons.append(f"deadline passed ({opp.deadline})")
+        opp.pwin = 0.0
         return opp
 
     # 2. Set-aside vs certifications.
@@ -79,6 +81,7 @@ def prescreen(record: dict, profile: CompanyProfile, today: Optional[_dt.date] =
             if required.upper() not in held:
                 opp.screen = "blocked"
                 opp.reasons.append(f"set-aside requires {required}; not held")
+                opp.pwin = 0.0
                 return opp
             opp.reasons.append(f"set-aside matches held certification ({required})")
 
@@ -90,6 +93,7 @@ def prescreen(record: dict, profile: CompanyProfile, today: Optional[_dt.date] =
         if small is False and set_aside:  # any set-aside requires being small
             opp.screen = "blocked"
             opp.reasons.append(f"other-than-small under NAICS {opp.naics} on a set-aside notice")
+            opp.pwin = 0.0
             return opp
         if small is None:
             opp.screen = "review"
@@ -103,7 +107,26 @@ def prescreen(record: dict, profile: CompanyProfile, today: Optional[_dt.date] =
             opp.screen = "review"
         opp.reasons.append(f"NAICS {opp.naics} not in the company's registered codes")
 
+    opp.pwin = _quick_pwin(opp, profile)
     return opp
+
+
+def _quick_pwin(opp: ScreenedOpportunity, profile: CompanyProfile) -> float:
+    """Heuristic P(win) for top-of-funnel ranking — pre-eligibility, so it
+    only sees notice metadata + profile. Advisory; blocked notices score 0."""
+    from .ml.pwin import BASELINE_PWIN
+
+    if opp.screen == "blocked":
+        return 0.0
+    p = BASELINE_PWIN
+    set_aside = (opp.set_aside or "").lower()
+    if set_aside and "small business" not in set_aside:
+        p += 0.06  # a set-aside we survived screening for thins the field
+    if opp.naics and opp.naics in profile.naics_codes:
+        p += 0.03
+    if opp.screen == "review":
+        p -= 0.05  # unresolved screening questions
+    return round(min(0.65, max(0.02, p)), 3)
 
 
 def discover(
@@ -135,7 +158,9 @@ def discover(
             seen.add(notice_id)
             results.append(prescreen(record, profile, today))
     order = {"candidate": 0, "review": 1, "blocked": 2}
-    results.sort(key=lambda o: (order.get(o.screen, 3), o.deadline or "9999"))
+    results.sort(
+        key=lambda o: (order.get(o.screen, 3), -(o.pwin or 0.0), o.deadline or "9999")
+    )
     return results
 
 

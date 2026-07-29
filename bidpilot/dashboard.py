@@ -81,9 +81,13 @@ def _eligibility_section(report) -> str:
     ) + "".join(
         f"<div class='needs'>❓ {_e(m)}</div>" for m in report.missing_info
     )
+    advisory = (
+        f"<p class='small'><em>{_e(report.pwin_advisory)}</em></p>"
+        if getattr(report, "pwin_advisory", None) else ""
+    )
     return (
         f"<section><h2>Eligibility — {_e(report.bid_recommendation.value)} "
-        f"({report.confidence:.0%})</h2><p>{_e(report.rationale)}</p>{rows}</section>"
+        f"({report.confidence:.0%})</h2><p>{_e(report.rationale)}</p>{advisory}{rows}</section>"
     )
 
 

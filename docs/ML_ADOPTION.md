@@ -10,7 +10,7 @@ and humans decide — no ML output may gate, sign, price, or submit.
 |---|---|---|---|
 | P(win) bid advisor | pass — metric: B&P efficiency (win rate per proposal dollar) | no outcome data captured anywhere today | **BUILD capture + heuristic now, train later** |
 | Custom LLM per stage | pass — metric: G2 recall >= 0.98 at lower cost | capture loop built (`bidpilot/mle/`) | already implemented; this IS phases 3-5 for LLM stages |
-| Price-to-win regression | pass — metric: evaluated-price delta vs winner | needs FPDS award-history ingestion (not built) | DEFER until an FPDS collector exists |
+| Price-to-win regression | pass — metric: evaluated-price delta vs winner | **data path built**: `bidpilot/intake/fpds.py` (public ATOM feed, no key) + `bidpilot benchmark-price` positions the priced total against award history (advisory, PRICE_POSITION.md) | model DEFERRED until enough runs pair positions with outcomes |
 | Embedding retrieval (vs BM25) | weak — BM25 works; writers only | needs eval corpus to prove lift | DEFER; swap lives behind `SearchIndex` interface |
 
 ## P(win) advisor — the component built now

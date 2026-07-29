@@ -73,6 +73,10 @@ class GateAnswer(BaseModel):
     approve: bool
 
 
+class OutcomeReq(BaseModel):
+    outcome: str  # won | lost | no_bid
+
+
 def default_ctx_builder(url: str, out_root: Path, confirm, console) -> "orchestrator.RunContext":
     from .kb.store import load_kb
 
@@ -135,6 +139,22 @@ def create_app(ctx_builder: CtxBuilder = default_ctx_builder,
             raise HTTPException(status_code=409, detail="No gate is pending.")
         return {"ok": True}
 
+    @app.post("/api/runs/{notice_id}/outcome")
+    def report_outcome(notice_id: str, req: OutcomeReq):
+        from .ml.pwin import VALID_OUTCOMES, build_features, record_outcome
+
+        handle = runs.get(notice_id)
+        if not handle:
+            raise HTTPException(status_code=404, detail="Unknown run.")
+        state = handle.ctx.state
+        if req.outcome not in VALID_OUTCOMES:
+            raise HTTPException(status_code=422, detail=f"outcome must be one of {VALID_OUTCOMES}")
+        if state.eligibility is None or state.notice is None:
+            raise HTTPException(status_code=409, detail="Run has no eligibility report yet.")
+        features = build_features(state.notice.metadata, state.eligibility, handle.ctx.kb)
+        record_outcome(output_root, state.notice.metadata.notice_id, req.outcome, features)
+        return {"ok": True, "outcome": req.outcome}
+
     @app.get("/api/runs/{notice_id}/files/{file_path:path}")
     def get_file(notice_id: str, file_path: str):
         handle = runs.get(notice_id)
@@ -170,6 +190,7 @@ def create_app(ctx_builder: CtxBuilder = default_ctx_builder,
             "bid_recommendation": (
                 state.eligibility.bid_recommendation.value if state.eligibility else None
             ),
+            "pwin_advisory": state.eligibility.pwin_advisory if state.eligibility else None,
             "pending_gate": handle.pending_gate,
             "halted_reason": state.halted_reason,
             "error": handle.error,
@@ -221,6 +242,10 @@ async function startRun(){
   document.getElementById('startErr').textContent=r.ok?'':(await r.json()).detail;
   refresh();
 }
+async function outcome(id,o){
+  const r=await fetch(`/api/runs/${id}/outcome`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({outcome:o})});
+  if(r.ok) alert('Outcome recorded — P(win) training data captured.');
+}
 async function gate(id,approve){
   await fetch(`/api/runs/${id}/gate`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({approve})});
   refresh();
@@ -238,7 +263,11 @@ async function refresh(){
       <button class='decline' onclick='gate("${r.notice_id}",false)'>Decline</button></div>`:''}
     ${r.halted_reason?`<div class='err'>halted: ${r.halted_reason}</div>`:''}
     ${r.error?`<div class='err'>${r.error}</div>`:''}
-    ${r.export_path?`<div>📦 exported package ready</div>`:''}
+    ${r.pwin_advisory?`<div class='small'>${r.pwin_advisory}</div>`:''}
+    ${r.export_path?`<div>📦 exported package ready &middot; record outcome:
+      <button onclick='outcome("${r.notice_id}","won")'>Won</button>
+      <button onclick='outcome("${r.notice_id}","lost")' class='decline'>Lost</button>
+      <button onclick='outcome("${r.notice_id}","no_bid")'>No-bid</button></div>`:''}
     <details><summary class='small'>artifacts (${r.artifacts.length})</summary>
       ${r.artifacts.map(a=>`<a href='/api/runs/${r.notice_id}/files/${a}' target='_blank'>${a}</a>`).join('<br>')}
     </details>
