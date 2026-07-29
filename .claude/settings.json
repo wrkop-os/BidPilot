@@ -9,5 +9,20 @@
   },
   "enabledPlugins": {
     "ecc@ecc": true
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash scripts/session_setup.sh",
+            "async": true,
+            "timeout": 600,
+            "statusMessage": "Provisioning BidPilot deps (extras, cffi, LibreOffice)"
+          }
+        ]
+      }
+    ]
   }
 }

@@ -89,6 +89,9 @@ def main(argv: list[str] | None = None) -> int:
     init_p = sub.add_parser("init-kb", help="Create a KB directory from the example")
     init_p.add_argument("path", nargs="?", default="kb")
 
+    watch_p = sub.add_parser("watch-amendments", help="Sweep all runs for new amendment notices (cron-able; exit 1 if any found)")
+    watch_p.add_argument("--out", default="runs")
+
     bp_p = sub.add_parser("benchmark-price", help="Position the run's priced total against FPDS award history (advisory)")
     bp_p.add_argument("url")
     bp_p.add_argument("--out", default="runs")
@@ -121,6 +124,8 @@ def main(argv: list[str] | None = None) -> int:
 
     args = parser.parse_args(argv)
 
+    if args.command == "watch-amendments":
+        return _watch_amendments(args)
     if args.command == "benchmark-price":
         return _benchmark_price(args)
     if args.command == "outcome":
@@ -150,6 +155,25 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "doctor":
         return _doctor(args)
     return _run(args, analyst_only=(args.command == "analyze"))
+
+
+def _watch_amendments(args) -> int:
+    from .intake.samgov import SamGovClient
+    from .watch import report_lines, watch_all
+
+    sam = SamGovClient()
+    if not sam.api_key:
+        console.print("[red]SAM_GOV_API_KEY is required to re-query amendment chains.[/red]")
+        return 1
+    results = watch_all(sam, Path(args.out))
+    if not results:
+        console.print("No runs found to watch.")
+        return 0
+    for line in report_lines(results):
+        console.print(line)
+    stale = sum(1 for r in results if r.stale)
+    console.print(f"{len(results)} run(s) checked, {stale} with new amendments.")
+    return 1 if stale else 0
 
 
 def _benchmark_price(args) -> int:
