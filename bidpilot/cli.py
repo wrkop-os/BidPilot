@@ -89,8 +89,27 @@ def main(argv: list[str] | None = None) -> int:
     init_p = sub.add_parser("init-kb", help="Create a KB directory from the example")
     init_p.add_argument("path", nargs="?", default="kb")
 
+    serve_p = sub.add_parser("serve", help="Web UI/API: paste a listing URL, approve gates in the browser")
+    serve_p.add_argument("--host", default="127.0.0.1")
+    serve_p.add_argument("--port", type=int, default=8400)
+    serve_p.add_argument("--out", default="runs")
+
+    mle_p = sub.add_parser("mle", help="MLE workflows: collect run captures, export fine-tuning data")
+    mle_sub = mle_p.add_subparsers(dest="mle_command", required=True)
+    mle_c = mle_sub.add_parser("collect", help="Scan run dirs for training captures + human-preference pairs")
+    mle_c.add_argument("--out", default="runs", help="Root of run directories")
+    mle_e = mle_sub.add_parser("export", help="Export chat-format JSONL (train/val) for fine-tuning")
+    mle_e.add_argument("--out", default="runs")
+    mle_e.add_argument("--dataset-dir", default="mle_datasets")
+    mle_e.add_argument("--stage-prefix", default=None, help="e.g. 'shred' or 'produce.write'")
+    mle_e.add_argument("--val-fraction", type=float, default=0.1)
+
     args = parser.parse_args(argv)
 
+    if args.command == "serve":
+        return _serve(args)
+    if args.command == "mle":
+        return _mle(args)
     if args.command == "init-kb":
         return _init_kb(args.path)
     if args.command == "interview":
@@ -112,6 +131,42 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "doctor":
         return _doctor(args)
     return _run(args, analyst_only=(args.command == "analyze"))
+
+
+def _serve(args) -> int:
+    try:
+        import uvicorn
+    except ImportError:
+        print("The web UI needs the server extras: pip install -e '.[server]'")
+        return 1
+    from .server import create_app
+
+    app = create_app(output_root=Path(args.out))
+    uvicorn.run(app, host=args.host, port=args.port)
+    return 0
+
+
+def _mle(args) -> int:
+    from .mle import collect_runs, export_chat_jsonl
+
+    examples, stats = collect_runs(Path(args.out))
+    print(
+        f"scanned {stats.runs_scanned} run(s): {stats.captures} captures, "
+        f"{stats.preferences} human-preference pairs"
+    )
+    for stage, n in sorted(stats.by_stage.items()):
+        print(f"  {stage}: {n}")
+    if not examples:
+        print("No captures found. Run the pipeline with BIDPILOT_CAPTURE_TRAINING_DATA=1 first.")
+        return 0
+    if args.mle_command == "export":
+        counts = export_chat_jsonl(
+            examples, Path(args.dataset_dir),
+            stage_prefix=args.stage_prefix, val_fraction=args.val_fraction,
+        )
+        print(f"wrote {args.dataset_dir}/train.jsonl ({counts['train']}), "
+              f"val.jsonl ({counts['val']}), {counts['preference_pairs']} preference pairs")
+    return 0
 
 
 def _init_kb(dest: str) -> int:

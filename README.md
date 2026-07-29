@@ -82,6 +82,11 @@ bidpilot interview                 # onboarding agent: what the KB is still miss
 ## Usage
 
 ```bash
+# Web UI (pip install -e ".[server]"): paste a listing URL in the browser —
+# the listing is analyzed, the needed response package is decided from its
+# classification, and every human gate becomes an approval button.
+bidpilot serve --port 8400
+
 # Environment / contract checks first (add --network to ping the SAM API, NFR-3)
 bidpilot doctor
 
@@ -146,6 +151,24 @@ Each run lives in `runs/<notice_id>/`:
 ## Model routing (PRD §6.2.4, NFR-2)
 
 Fast tier (`claude-haiku-4-5`) for volume work: window extraction, classification. Frontier tier (`claude-opus-5`) for judgment: strategy, writing, red-team, pricing decomposition, the adversarial completeness pass. Override with `BIDPILOT_FRONTIER_MODEL` / `BIDPILOT_FAST_MODEL`. Cost telemetry per call is in the audit log (FR-22).
+
+## MLE loop: train a custom model to operate the backend
+
+Every run can generate training signal, closing the loop from production use to a fine-tuned model that runs the pipeline:
+
+```bash
+BIDPILOT_CAPTURE_TRAINING_DATA=1 bidpilot run <listing-url>   # 1. capture (system,prompt,output) per call
+bidpilot mle collect                                          # 2. sweep runs; reviewer section edits become preference pairs
+bidpilot mle export --stage-prefix shred                      # 3. train/val chat JSONL (+ DPO 'rejected' fields)
+# 4. fine-tune (LoRA on an open model, or a provider fine-tune) and serve it
+#    behind any OpenAI-compatible endpoint (vLLM / TGI / Ollama), then:
+export BIDPILOT_CUSTOM_LLM_URL=https://your-host/v1
+export BIDPILOT_CUSTOM_LLM_MODEL=bidpilot-ft-1
+export BIDPILOT_CUSTOM_LLM_TIERS=fast        # graduate to 'all' when evals pass
+# 5. ship gate: python -m evals.harness ... — recall >= 0.98 (G2) or it doesn't ship
+```
+
+The router keeps auditing every call (model, prompt hash, tokens) regardless of backend, structured outputs are schema-validated with one retry, and vision/OCR stays on the Anthropic API until the custom deployment is vision-capable. Human edits are the highest-value data: the export marks the reviewer's text as the preferred output and the machine draft as `rejected`.
 
 ## Evals (PRD §13, Phase 0)
 

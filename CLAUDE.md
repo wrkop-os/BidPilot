@@ -31,6 +31,8 @@ gracefully without it.
 | Reviewer edit loop | `bidpilot/drafts.py` (`sync-drafts`, clobber protection) |
 | Static domain data | `bidpilot/data/` (SBA size standards, clause regexes, portal playbooks) |
 | Company KB (sole source of company facts) | `bidpilot/kb/` |
+| Web UI/API (listing in → gates → package out) | `bidpilot/server.py` (`bidpilot serve`; gates block on browser approval) |
+| MLE loop (capture → collect → export → serve custom LLM) | `bidpilot/mle/`; router env: `BIDPILOT_CUSTOM_LLM_URL/_MODEL/_TIERS`, `BIDPILOT_CAPTURE_TRAINING_DATA` |
 
 ## Non-negotiable invariants (PRD §14)
 

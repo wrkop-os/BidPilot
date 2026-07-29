@@ -22,9 +22,15 @@ dependencies = [
 
 [project.optional-dependencies]
 tables = ["pdfplumber>=0.11"]
+server = [
+    "fastapi>=0.110",
+    "uvicorn>=0.29",
+]
 dev = [
     "pytest>=8.0",
     "pytest-mock>=3.12",
+    "fastapi>=0.110",
+    "uvicorn>=0.29",
 ]
 
 [project.scripts]
