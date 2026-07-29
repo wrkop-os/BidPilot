@@ -182,10 +182,17 @@ The harness scores requirement **recall** against hand-built gold matrices (G2 t
 
 ## State of the build
 
-Everything above is implemented and covered by 114 deterministic tests (no
+Everything above is implemented and covered by 150 deterministic tests (no
 network, no keys), including end-to-end pipeline runs with fake models and
-with real DOCX/XLSX/fillable-PDF fixture attachments. What the codebase now
-needs to advance is **real-world input, not more code**:
+with real DOCX/XLSX/fillable-PDF fixture attachments — plus, since the
+initial build: the web UI/API (`bidpilot serve`, gates as browser
+approvals, outcome capture), the MLE loop (training-data capture,
+fine-tune export, custom-LLM serving with fail-closed promotion gates),
+the P(win) advisor (heuristic now, trainable once outcomes accumulate),
+the FPDS price-position collector (`bidpilot benchmark-price`, no key
+needed), P(win)-ranked discovery, and the `kb.pro` market-researched KB
+template. What the codebase now needs to advance is **real-world input,
+not more code**:
 
 1. **Keys** — `SAM_GOV_API_KEY` (free, via a SAM.gov account) and
    `ANTHROPIC_API_KEY`, then a first live run: `bidpilot doctor --network`,
@@ -208,5 +215,5 @@ Autonomous submission (NG1 — hard product principle), CUI/classified processin
 - pgvector retrieval behind `KnowledgeBase`; Postgres checkpoints behind `CheckpointStore` (interfaces are in place; v1 uses YAML + JSON files).
 - Multi-tenant isolation + per-tenant encryption (FR-20) — v1 is single-tenant by design (PRD open question #1 recommends a design partner first).
 - FastAPI + React reviewer UI with tracked edits (v1 ships `dashboard.html` + the run directory, per the PRD's "pragmatic v1" reviewer note).
-- Learning loop (Phase 5.2): debrief/win-loss ingestion into win-theme selection.
+- Learning loop (Phase 5.2): win/loss capture ships (`bidpilot outcome`, web outcome buttons -> P(win) training data); debrief ingestion into win-theme selection remains.
 - Portal-specific checklists for PIEE/eBuy/FedConnect (Phase 5.3).
