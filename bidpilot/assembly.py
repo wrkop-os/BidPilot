@@ -153,6 +153,8 @@ def eligibility_markdown(state) -> str:
         "",
         report.rationale,
     ]
+    if report.pwin_advisory:
+        lines += ["", f"_{report.pwin_advisory}_"]
     if report.hard_blockers:
         lines += ["", "## 🛑 Hard blockers"] + [f"- {b}" for b in report.hard_blockers]
     if report.soft_risks:

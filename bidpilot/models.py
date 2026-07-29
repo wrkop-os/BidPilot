@@ -202,6 +202,10 @@ class EligibilityReport(BaseModel):
     bid_recommendation: BidRecommendation
     confidence: float = Field(default=0.5, ge=0.0, le=1.0)
     rationale: str
+    pwin_advisory: Optional[str] = Field(
+        default=None,
+        description="Deterministic/model P(win) advisory line — never gates (docs/ML_ADOPTION.md)",
+    )
 
 
 # ---------------------------------------------------------------------------

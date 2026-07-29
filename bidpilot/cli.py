@@ -89,6 +89,12 @@ def main(argv: list[str] | None = None) -> int:
     init_p = sub.add_parser("init-kb", help="Create a KB directory from the example")
     init_p.add_argument("path", nargs="?", default="kb")
 
+    out_p = sub.add_parser("outcome", help="Record a bid outcome (won/lost/no_bid) as P(win) training data")
+    out_p.add_argument("url")
+    out_p.add_argument("outcome", choices=["won", "lost", "no_bid"])
+    out_p.add_argument("--kb", default=None)
+    out_p.add_argument("--out", default="runs")
+
     serve_p = sub.add_parser("serve", help="Web UI/API: paste a listing URL, approve gates in the browser")
     serve_p.add_argument("--host", default="127.0.0.1")
     serve_p.add_argument("--port", type=int, default=8400)
@@ -106,6 +112,8 @@ def main(argv: list[str] | None = None) -> int:
 
     args = parser.parse_args(argv)
 
+    if args.command == "outcome":
+        return _outcome(args)
     if args.command == "serve":
         return _serve(args)
     if args.command == "mle":
@@ -131,6 +139,25 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "doctor":
         return _doctor(args)
     return _run(args, analyst_only=(args.command == "analyze"))
+
+
+def _outcome(args) -> int:
+    from .kb.store import load_kb
+    from .ml.pwin import build_features, record_outcome
+
+    state, _ = _load_state_or_fail(args)
+    if state.eligibility is None or state.notice is None:
+        console.print("[red]Run has no eligibility report yet — run `bidpilot analyze` first.[/red]")
+        return 1
+    features = build_features(state.notice.metadata, state.eligibility, load_kb(args.kb))
+    path = record_outcome(Path(args.out), state.notice.metadata.notice_id, args.outcome, features)
+    from .ml.pwin import load_outcomes
+    labeled = sum(1 for r in load_outcomes(Path(args.out)) if r["outcome"] in ("won", "lost"))
+    console.print(
+        f"Recorded '{args.outcome}' for {state.notice.metadata.notice_id} -> {path} "
+        f"({labeled} labeled outcomes; training unlocks at 30)"
+    )
+    return 0
 
 
 def _serve(args) -> int:

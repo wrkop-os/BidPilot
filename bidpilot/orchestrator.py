@@ -334,6 +334,15 @@ def _eligibility(ctx: RunContext) -> None:
     state.eligibility = eligibility.check_eligibility(
         ctx.router, state.notice.metadata, state.classification, state.doc_tree, ctx.kb, ctx.sam
     )
+    try:  # advisory only — a P(win) failure must never fail eligibility
+        from .ml.pwin import advisory_for
+
+        state.eligibility.pwin_advisory = advisory_for(
+            state.notice.metadata, state.eligibility, ctx.kb
+        )
+        ctx.console.print(f"  {state.eligibility.pwin_advisory}")
+    except Exception:
+        pass
 
 
 def _shred(ctx: RunContext) -> None:
