@@ -176,29 +176,33 @@ class ModelRouter:
         if tier == Tier.FAST:
             prompt = prompt[:FAST_TIER_MAX_PROMPT_CHARS]
         start = time.monotonic()
-        if self._uses_custom(tier):
-            parsed, usage = self.custom.structured(system, prompt, output_type, max_tokens)
-            self._audit_raw(self.model_for(tier), system, prompt, usage, stage,
-                            time.monotonic() - start)
-            self._capture(stage, tier, system, prompt, parsed.model_dump_json())
-            return parsed
-        model = self.model_for(tier)
-        response = self.client.messages.parse(
-            model=model,
-            max_tokens=max_tokens,
-            system=system,
-            messages=[{"role": "user", "content": prompt}],
-            output_format=output_type,
-        )
-        self._audit(model, system, prompt, response, stage, time.monotonic() - start)
-        if response.stop_reason == "refusal":
-            raise RefusalError(_refusal_message(response))
-        if response.stop_reason == "max_tokens":
-            raise RuntimeError(f"Structured output truncated at max_tokens={max_tokens} ({stage}).")
-        if response.parsed_output is None:
-            raise RuntimeError(f"Response did not parse into {output_type.__name__} ({stage}).")
-        self._capture(stage, tier, system, prompt, response.parsed_output.model_dump_json())
-        return response.parsed_output
+        try:
+            if self._uses_custom(tier):
+                parsed, usage = self.custom.structured(system, prompt, output_type, max_tokens)
+                self._audit_raw(self.model_for(tier), system, prompt, usage, stage,
+                                time.monotonic() - start)
+                self._capture(stage, tier, system, prompt, parsed.model_dump_json())
+                return parsed
+            model = self.model_for(tier)
+            response = self.client.messages.parse(
+                model=model,
+                max_tokens=max_tokens,
+                system=system,
+                messages=[{"role": "user", "content": prompt}],
+                output_format=output_type,
+            )
+            self._audit(model, system, prompt, response, stage, time.monotonic() - start)
+            if response.stop_reason == "refusal":
+                raise RefusalError(_refusal_message(response))
+            if response.stop_reason == "max_tokens":
+                raise RuntimeError(f"Structured output truncated at max_tokens={max_tokens} ({stage}).")
+            if response.parsed_output is None:
+                raise RuntimeError(f"Response did not parse into {output_type.__name__} ({stage}).")
+            self._capture(stage, tier, system, prompt, response.parsed_output.model_dump_json())
+            return response.parsed_output
+        except Exception as exc:
+            self._audit_failure(self.model_for(tier), stage, exc, time.monotonic() - start)
+            raise
 
     # -- long-form drafting ----------------------------------------------------
 
@@ -212,28 +216,32 @@ class ModelRouter:
     ) -> str:
         """Frontier-tier long-form generation."""
         start = time.monotonic()
-        if self._uses_custom(Tier.FRONTIER):
-            text, usage = self.custom.complete(system, prompt, max_tokens)
-            self._audit_raw(self.model_for(Tier.FRONTIER), system, prompt, usage, stage,
-                            time.monotonic() - start)
+        try:
+            if self._uses_custom(Tier.FRONTIER):
+                text, usage = self.custom.complete(system, prompt, max_tokens)
+                self._audit_raw(self.model_for(Tier.FRONTIER), system, prompt, usage, stage,
+                                time.monotonic() - start)
+                self._capture(stage, Tier.FRONTIER, system, prompt, text)
+                return text
+            with self.client.beta.messages.stream(
+                model=FRONTIER_MODEL,
+                max_tokens=max_tokens,
+                system=system,
+                messages=[{"role": "user", "content": prompt}],
+                output_config={"effort": self.effort},
+                betas=["server-side-fallback-2026-07-01"],
+                fallbacks="default",
+            ) as stream:
+                message = stream.get_final_message()
+            self._audit(FRONTIER_MODEL, system, prompt, message, stage, time.monotonic() - start)
+            if message.stop_reason == "refusal":
+                raise RefusalError(_refusal_message(message))
+            text = "".join(block.text for block in message.content if block.type == "text")
             self._capture(stage, Tier.FRONTIER, system, prompt, text)
             return text
-        with self.client.beta.messages.stream(
-            model=FRONTIER_MODEL,
-            max_tokens=max_tokens,
-            system=system,
-            messages=[{"role": "user", "content": prompt}],
-            output_config={"effort": self.effort},
-            betas=["server-side-fallback-2026-07-01"],
-            fallbacks="default",
-        ) as stream:
-            message = stream.get_final_message()
-        self._audit(FRONTIER_MODEL, system, prompt, message, stage, time.monotonic() - start)
-        if message.stop_reason == "refusal":
-            raise RefusalError(_refusal_message(message))
-        text = "".join(block.text for block in message.content if block.type == "text")
-        self._capture(stage, Tier.FRONTIER, system, prompt, text)
-        return text
+        except Exception as exc:
+            self._audit_failure(self.model_for(Tier.FRONTIER), stage, exc, time.monotonic() - start)
+            raise
 
     # -- vision (OCR fallback for image-only pages) ----------------------------
 
@@ -298,6 +306,20 @@ class ModelRouter:
             prompt_sha256=prompt_hash(system, prompt),
             tokens_in=getattr(usage, "input_tokens", None),
             tokens_out=getattr(usage, "output_tokens", None),
+            duration_s=round(duration, 2),
+        )
+
+    def _audit_failure(self, model, stage, exc: Exception, duration: float) -> None:
+        """Failed calls leave a trace too — retry/failure rates per stage are
+        first-class cost telemetry, not invisible noise."""
+        if not self.audit:
+            return
+        self.audit.record(
+            "llm_call_failed",
+            actor="model",
+            stage=stage,
+            model=model,
+            detail=type(exc).__name__,
             duration_s=round(duration, 2),
         )
 

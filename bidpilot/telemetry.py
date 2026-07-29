@@ -33,6 +33,7 @@ def _price_for(model: str) -> tuple[float, float]:
 @dataclass
 class StageCost:
     calls: int = 0
+    failures: int = 0
     tokens_in: int = 0
     tokens_out: int = 0
     cost_usd: float = 0.0
@@ -53,6 +54,13 @@ def compute_costs(audit_path: Path) -> RunCost:
     log = AuditLog(audit_path)
     run_cost = RunCost()
     for entry in log.entries():
+        if entry.get("event") == "llm_call_failed":
+            model = entry.get("model") or "unknown"
+            stage = _stage_group(entry.get("stage") or "unknown")
+            for bucket in (run_cost.by_stage[stage], run_cost.by_model[model], run_cost.total):
+                bucket.failures += 1
+                bucket.duration_s += float(entry.get("duration_s") or 0)
+            continue
         if entry.get("event") != "llm_call":
             continue
         model = entry.get("model") or "unknown"
@@ -82,17 +90,19 @@ def report_markdown(run_cost: RunCost) -> str:
         f"**Total model spend: ${run_cost.total.cost_usd:.2f}** "
         f"(NFR-2 budget ${NFR2_BUDGET_USD:.0f} — "
         f"{'WITHIN' if run_cost.within_budget() else 'OVER'} budget)",
-        f"Calls: {run_cost.total.calls} | tokens in: {run_cost.total.tokens_in:,} | "
+        f"Calls: {run_cost.total.calls} | failed: {run_cost.total.failures} | "
+        f"tokens in: {run_cost.total.tokens_in:,} | "
         f"out: {run_cost.total.tokens_out:,} | model time: {run_cost.total.duration_s:.0f}s",
         "",
         "## By stage",
         "",
-        "| Stage | Calls | Tokens in | Tokens out | Cost |",
-        "|---|---|---|---|---|",
+        "| Stage | Calls | Failed | Tokens in | Tokens out | Cost |",
+        "|---|---|---|---|---|---|",
     ]
     for stage, cost in sorted(run_cost.by_stage.items(), key=lambda kv: -kv[1].cost_usd):
         lines.append(
-            f"| {stage} | {cost.calls} | {cost.tokens_in:,} | {cost.tokens_out:,} | ${cost.cost_usd:.2f} |"
+            f"| {stage} | {cost.calls} | {cost.failures} | {cost.tokens_in:,} | "
+            f"{cost.tokens_out:,} | ${cost.cost_usd:.2f} |"
         )
     lines += ["", "## By model", "", "| Model | Calls | Cost |", "|---|---|---|"]
     for model, cost in sorted(run_cost.by_model.items(), key=lambda kv: -kv[1].cost_usd):

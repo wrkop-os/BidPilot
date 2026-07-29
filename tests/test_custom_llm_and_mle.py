@@ -1,6 +1,8 @@
 """Custom-LLM backend (OpenAI-compatible serving) + MLE dataset workflows."""
 
 import json
+
+import pytest
 from pathlib import Path
 
 import httpx
@@ -137,3 +139,24 @@ def test_export_chat_jsonl_round_trip(tmp_path):
     assert pref["messages"][2]["content"] == "Reviewer-corrected prose."
     assert pref["rejected"] == "Machine prose."
     assert (tmp_path / "ds" / "DATASET_CARD.md").exists()
+
+
+def test_failed_calls_are_audited_and_counted(monkeypatch, tmp_path):
+    from bidpilot.telemetry import compute_costs
+
+    def bad_handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(500, text="upstream broke")
+
+    monkeypatch.setenv("BIDPILOT_CUSTOM_LLM_URL", "http://llm.local/v1")
+    monkeypatch.setenv("BIDPILOT_CUSTOM_LLM_MODEL", "bidpilot-ft-1")
+    monkeypatch.setenv("BIDPILOT_CUSTOM_LLM_TIERS", "all")
+    audit = AuditLog(tmp_path / "audit.jsonl")
+    router = ModelRouter(audit=audit)
+    router.custom._http = httpx.Client(transport=httpx.MockTransport(bad_handler))
+    with pytest.raises(Exception):
+        router.structured(Tier.FAST, system="s", prompt="p", output_type=Verdict, stage="shred.pass1")
+    events = [e["event"] for e in audit.entries()]
+    assert "llm_call_failed" in events
+    costs = compute_costs(tmp_path / "audit.jsonl")
+    assert costs.total.failures == 1
+    assert costs.by_stage["shred"].failures == 1
