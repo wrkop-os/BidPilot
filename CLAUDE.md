@@ -1,4 +1,6 @@
-# BidPilot — contributor guide
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 Agentic AI system: SAM.gov opportunity URL → reviewed, compliant, priced
 federal proposal package. Built to `README.md`'s PRD; read that first.
@@ -6,9 +8,12 @@ federal proposal package. Built to `README.md`'s PRD; read that first.
 ## Commands
 
 ```bash
-pip install -e ".[dev,tables]"   # tables = pdfplumber (optional)
+pip install -e ".[dev,tables]"   # tables = pdfplumber; add [server] for the web UI
 python -m pytest -q              # full suite: deterministic, no network/keys
+python -m pytest tests/test_rates.py::test_wrap_rate -q   # single test
 bidpilot doctor                  # env checks (--network pings the SAM API)
+bidpilot serve --port 8400       # web UI: paste listing URL, gates in browser
+bidpilot mle collect             # sweep runs for captured training data
 python -m evals.harness evals/corpus_demo/sample_extracted_matrix.json evals/corpus_demo/gold_matrix.csv
 ```
 
@@ -30,7 +35,7 @@ gracefully without it.
 | Rendering + exact page counts | `bidpilot/rendering.py` |
 | Reviewer edit loop | `bidpilot/drafts.py` (`sync-drafts`, clobber protection) |
 | Static domain data | `bidpilot/data/` (SBA size standards, clause regexes, portal playbooks) |
-| Company KB (sole source of company facts) | `bidpilot/kb/` |
+| Company KB (sole source of company facts) | `bidpilot/kb/`; templates: `kb.example/` (minimal, used by tests) and `kb.pro/` (market-researched rates — sources in `kb.pro/MARKET_RESEARCH.md`) |
 | Web UI/API (listing in → gates → package out) | `bidpilot/server.py` (`bidpilot serve`; gates block on browser approval) |
 | MLE loop (capture → collect → export → serve custom LLM) | `bidpilot/mle/`; router env: `BIDPILOT_CUSTOM_LLM_URL/_MODEL/_TIERS`, `BIDPILOT_CAPTURE_TRAINING_DATA` |
 
@@ -62,3 +67,7 @@ gracefully without it.
   (see `tests/test_orchestrator_e2e.py` — extend `FakeRouter` by schema name).
 - Commit messages: plain ASCII quotes (shell-quote with single quotes).
 - New failure discovered live → corpus item + test before the fix (PRD rule).
+- `.claude/skills/` is a vendored snapshot of the ECC skill library
+  (affaan-m/everything-claude-code, enumerated from its
+  manifests/install-modules.json). Treat it as third-party vendor code:
+  don't hand-edit individual skills; refresh by re-vendoring from upstream.
