@@ -10,7 +10,7 @@ build/
 # BidPilot runtime artifacts & tenant data
 runs/
 output/
-kb/
+/kb/
 knowledge_base/
 evals/corpus/
 .env
