@@ -1,7 +1,6 @@
 """FPDS award collector (price-to-win data path), discovery P(win) ranking,
 and the web outcome endpoint."""
 
-import json
 from pathlib import Path
 
 import httpx
@@ -101,7 +100,6 @@ def test_web_outcome_endpoint(tmp_path):
 
     from bidpilot.ml.pwin import load_outcomes
     from bidpilot.server import create_app
-    from bidpilot.state import Stage
 
     from test_server import _fake_ctx_builder, _wait
     from test_orchestrator_e2e import NOTICE

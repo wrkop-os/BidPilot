@@ -13,9 +13,13 @@ Conventions:
 
 ## Active
 
-- [ ] Competitive benchmark stage 2: score the 8 profiled rivals per
-      benchmark-methodology (docs/COMPETITIVE_LANDSCAPE.md) (added 2026-07-29)
-
+- [ ] Merge the working branch into main so the CI workflow exists on the
+      default branch — until then the nightly `schedule:` trigger cannot
+      fire and main has never run CI. Needs the user's go-ahead for the
+      PR/merge (added 2026-07-30, from automation audit)
+- [ ] After the merge: enable branch protection on main requiring the CI
+      checks (admin console action; neither branch is protected today)
+      (added 2026-07-30, from automation audit)
 - [ ] Enable the daily sweep Routine once SAM_GOV_API_KEY is set on the
       environment (trigger: "BidPilot daily opportunity sweep", currently
       disabled) (added 2026-07-29)
@@ -25,8 +29,16 @@ Conventions:
       (blocked on: real listings) (added 2026-07-29)
 - [ ] Start recording bid outcomes (`bidpilot outcome` / web buttons);
       P(win) training unlocks at 30 labeled (added 2026-07-29)
+- [ ] MailerLite connector is toggled on in chat but unauthenticated —
+      finish OAuth in claude.ai connector settings, or switch it off
+      (added 2026-07-30, from automation audit)
+- [ ] Decide fate of the dead wrkop-os/Manager PR-watch loop: its
+      send_later chain fired 2026-07-11 and never re-armed, so nothing is
+      monitoring those PRs. Recreate the watch if they still matter,
+      otherwise drop (added 2026-07-30, from automation audit)
 
 ## Completed
 
-- [x] CI green on the branch (gitignore fix c6d9804, verified 2026-07-29)
-- [x] Amendment watch + session provisioning hook shipped (2026-07-29)
+- [x] Automation audit + canonical CI lane (lint/e2e/evals/nightly) +
+      dead-state cleanup; evidence in docs/AUTOMATION_AUDIT.md
+      (2026-07-30) — earlier completed blocks moved to ops/ARCHIVE.md

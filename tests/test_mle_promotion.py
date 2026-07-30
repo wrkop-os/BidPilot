@@ -6,7 +6,6 @@ from pathlib import Path
 
 import pytest
 
-from bidpilot.kb.store import load_kb
 from bidpilot.ml.pwin import PwinFeatures, record_outcome, score
 from bidpilot.mle.promotion import CUSTOM_LLM_GATES, assert_promotion_ready, gate_custom_llm
 

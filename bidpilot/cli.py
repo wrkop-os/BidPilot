@@ -430,14 +430,14 @@ def _reprice(args) -> int:
     indirects = kb.profile.indirect_rates or rates_mod.IndirectRateStructure(
         fringe=0.0, overhead=0.0, gna=0.0, fee=0.0
     )
-    option_years = max((l.year for l in pricing.priced_lines), default=0)
+    option_years = max((line.year for line in pricing.priced_lines), default=0)
     wd = None
-    if any(l.wd_floor is not None for l in pricing.priced_lines):
+    if any(line.wd_floor is not None for line in pricing.priced_lines):
         # Rebuild the WD table from the previously priced floors (base-year rates).
         wd = rates_mod.WageDetermination(entries=[
-            rates_mod.WageDeterminationEntry(labor_category=l.labor_category, minimum_wage=l.wd_floor)
-            for l in pricing.priced_lines
-            if l.wd_floor is not None and l.year == 0
+            rates_mod.WageDeterminationEntry(labor_category=line.labor_category, minimum_wage=line.wd_floor)
+            for line in pricing.priced_lines
+            if line.wd_floor is not None and line.year == 0
         ])
     priced, violations, unresolved = rates_mod.price_estimate(
         pricing.estimate, kb.direct_rates(), indirects, wd, option_years=option_years

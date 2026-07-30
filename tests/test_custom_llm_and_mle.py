@@ -90,7 +90,7 @@ def test_capture_writes_training_data(monkeypatch, tmp_path):
         responses=['{"label": "x", "score": 0.1}'],
     )
     router.structured(Tier.FAST, system="sys", prompt="pr", output_type=Verdict, stage="shred.pass1")
-    rows = [json.loads(l) for l in (tmp_path / "training_capture.jsonl").read_text().splitlines()]
+    rows = [json.loads(line) for line in (tmp_path / "training_capture.jsonl").read_text().splitlines()]
     assert rows[0]["stage"] == "shred.pass1"
     assert rows[0]["prompt"] == "pr"
     assert json.loads(rows[0]["output"])["label"] == "x"
@@ -133,7 +133,7 @@ def test_export_chat_jsonl_round_trip(tmp_path):
     examples, _ = collect_runs(tmp_path)
     counts = export_chat_jsonl(examples, tmp_path / "ds", val_fraction=0.0)
     assert counts["train"] == 2 and counts["preference_pairs"] == 1
-    rows = [json.loads(l) for l in (tmp_path / "ds" / "train.jsonl").read_text().splitlines()]
+    rows = [json.loads(line) for line in (tmp_path / "ds" / "train.jsonl").read_text().splitlines()]
     pref = next(r for r in rows if r["meta"]["kind"] == "preference")
     # Human-corrected text is the training target; machine output is 'rejected'.
     assert pref["messages"][2]["content"] == "Reviewer-corrected prose."

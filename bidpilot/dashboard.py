@@ -131,9 +131,9 @@ def _claims_section(state) -> str:
 
 def _pricing_section(pricing) -> str:
     rows = "".join(
-        f"<tr><td>{_e(l.task_id)}</td><td>{_e(l.labor_category)}</td><td>{l.year}</td>"
-        f"<td>{l.hours:.0f}</td><td>${l.wrapped_rate:.2f}</td><td>${l.extended:,.0f}</td></tr>"
-        for l in pricing.priced_lines
+        f"<tr><td>{_e(line.task_id)}</td><td>{_e(line.labor_category)}</td><td>{line.year}</td>"
+        f"<td>{line.hours:.0f}</td><td>${line.wrapped_rate:.2f}</td><td>${line.extended:,.0f}</td></tr>"
+        for line in pricing.priced_lines
     )
     wd = "".join(f"<div class='needs'>🛑 {_e(v.detail)}</div>" for v in pricing.wd_violations)
     quotes = "".join(f"<div class='needs'>[QUOTE NEEDED] {_e(q)}</div>" for q in pricing.quote_needed)

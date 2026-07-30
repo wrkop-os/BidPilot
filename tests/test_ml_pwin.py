@@ -1,7 +1,6 @@
 """P(win) advisor: data contract, heuristic determinism, model fallback,
 outcome capture, and the train-vs-baseline ship gate (docs/ML_ADOPTION.md)."""
 
-import time
 from pathlib import Path
 
 import pytest

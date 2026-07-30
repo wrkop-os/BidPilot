@@ -13,7 +13,6 @@ the same JSON API.
 from __future__ import annotations
 
 import io
-import secrets
 import threading
 import uuid
 from pathlib import Path

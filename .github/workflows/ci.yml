@@ -2,14 +2,36 @@ name: CI
 
 # PRD cross-phase cadence: every change re-runs the deterministic test suite
 # before merge. (The 25-corpus eval sweep needs live artifacts + keys and runs
-# out-of-band; this gate covers the deterministic core.)
+# out-of-band; the demo-corpus eval below gates the deterministic slice.)
+#
+# `schedule` only fires from the default branch, so the nightly drift check
+# goes live once this workflow lands on main.
 
 on:
   push:
     branches: ["**"]
   pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: "30 9 * * *"
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Ruff
+        run: |
+          pip install ruff
+          ruff check .
+
   test:
     runs-on: ubuntu-latest
     strategy:
@@ -17,8 +39,8 @@ jobs:
       matrix:
         python-version: ["3.10", "3.12"]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
@@ -26,17 +48,37 @@ jobs:
         run: pip install -e ".[dev,tables,ml]"
       - name: Run tests
         run: python -m pytest -q
+      - name: Eval harness (demo corpus, deterministic)
+        run: python -m evals.harness evals/corpus_demo/sample_extracted_matrix.json evals/corpus_demo/gold_matrix.csv
       - name: CLI smoke
         run: |
           bidpilot --help > /dev/null
           bidpilot doctor --kb kb.example || true   # informational; env has no keys
 
+  # Real-browser e2e (headless Chromium drives the gates UI against the fake
+  # router). Installed explicitly here — without the e2e extra these tests
+  # importorskip and silently vanish from the signal.
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install
+        run: pip install -e ".[dev,tables,server,e2e]"
+      - name: Install Chromium
+        run: python -m playwright install --with-deps chromium
+      - name: Browser e2e
+        run: python -m pytest tests/test_browser_e2e.py -q -rs
+
   # Exact page-count path (LibreOffice) exercised separately so the main job stays fast.
   render-exact:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
           cache: pip

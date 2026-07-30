@@ -78,7 +78,8 @@ def consistency_audit(
     pricing_summary = ""
     if pricing and pricing.estimate:
         pricing_summary = "\n".join(
-            f"- {l.labor_category}: {l.hours} hrs on {l.task_id}" for l in pricing.estimate.lines
+            f"- {line.labor_category}: {line.hours} hrs on {line.task_id}"
+            for line in pricing.estimate.lines
         )
     result = router.structured(
         Tier.FRONTIER,

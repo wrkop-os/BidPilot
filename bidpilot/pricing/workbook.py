@@ -51,9 +51,9 @@ def propose_fill(
     if grid is None:
         return TemplateFillProposal(unfillable_reason="Template could not be read.")
     lines = "\n".join(
-        f"- {l.labor_category} year {l.year}: {l.hours} hrs @ wrapped ${l.wrapped_rate}/hr "
-        f"= ${l.extended}"
-        for l in pricing.priced_lines
+        f"- {line.labor_category} year {line.year}: {line.hours} hrs @ wrapped ${line.wrapped_rate}/hr "
+        f"= ${line.extended}"
+        for line in pricing.priced_lines
     )
     prompt = f"""Map these computed numbers into the template.
 
