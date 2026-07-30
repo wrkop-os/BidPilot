@@ -15,7 +15,7 @@ commands). No external agent framework, no speculative MCP servers.
 | Persistent memory | repo-committed files: `ops/QUEUE.md` (task queue), run dirs (checkpointed state), `ml_outcomes.jsonl` + `training_capture.jsonl` (learning signal) | live |
 | Self-provisioning | SessionStart hook `scripts/session_setup.sh` (extras, cffi, LibreOffice — async, conditional) | live, pipe-tested |
 | Learning loop | capture -> `mle collect/export` -> fine-tune -> `mle gate` (fail-closed) ; outcomes -> `train_pwin` (fail-closed) | live code; waiting on real data |
-| Quality gate | CI on every push/PR + manual dispatch + nightly schedule (default-branch only): ruff lint, 159-test suite, demo-corpus eval harness, real-Chromium e2e, exact-render probe | live on branch; schedule fires once merged to main (see docs/AUTOMATION_AUDIT.md) |
+| Quality gate | CI on every push/PR + manual dispatch + nightly schedule (default-branch only): ruff lint (rule set pinned in pyproject), 159-test suite (its 2 browser-e2e tests execute in a dedicated Chromium job), demo-corpus eval harness, exact-render probe | live on branch; schedule fires once merged to main (see docs/AUTOMATION_AUDIT.md) |
 
 Session isolation rule: scheduled sessions share NOTHING with interactive
 sessions except what is committed to the repo or written to run

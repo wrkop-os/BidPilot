@@ -22,7 +22,7 @@ acted on the same day — the RESOLUTION column records what changed.
 | MLE capture loop (`bidpilot/mle/`) | local runtime | manual & off by default (BIDPILOT_CAPTURE_TRAINING_DATA opt-in; nothing schedules collect/export) | routing.py:145-146; cli.py:260 | KEEP as-is; goes live with real runs per OPS_HARNESS checklist |
 | Leftover agent worktree `agent-ae21206720056a804` | local runtime | stale (branch fully merged into 76a3f76 history) | `git worktree list`; BOARD.md:33 | CUT (pruned) |
 | Session crons | scheduler | none exist | CronList empty | n/a |
-| Connectors (22 installed) | external systems | 13 connected+enabled; **MailerLite enabled but unauthenticated**; 9 in unknown/disabled state (Linear, n8n, Stripe, Intercom, Cloudflare, DataHub, BasicOps, Kamai AI, HyperFrames) | ListConnectors 2026-07-30 | FIX NEXT (user): MailerLite OAuth or switch off; review the 9 dormant installs |
+| Connectors (22 installed) | external systems | 12 connected+enabled; **MailerLite enabled in chat but unauthenticated**; 9 in unknown/disabled state (Linear, n8n, Stripe, Intercom, Cloudflare, DataHub, BasicOps, Kamai AI, HyperFrames) | ListConnectors 2026-07-30 | FIX NEXT (user): MailerLite OAuth or switch off; review the 9 dormant installs |
 | Plugins (33 enabled account-wide) | external systems | configured; per-repo usefulness unreviewed | ListPlugins 2026-07-30 | FIX NEXT (user): keep/cut pass, out of repo scope |
 
 ## Findings
@@ -45,6 +45,14 @@ acted on the same day — the RESOLUTION column records what changed.
   jobs (SAM sweep, attention dashboard, and two spent one-shots).
 - Runner deprecation notice: checkout@v4 / setup-python@v5 target Node 20
   (bumped to v5/v6 today).
+- **Post-build catch (adversarial verify pass):** the new lint job failed
+  its first real CI run (run 30582809459) — CI's unpinned latest ruff
+  enforces a larger default rule set than the local ruff the "zero
+  violations" claim was verified against. Fixed by committing an explicit
+  `[tool.ruff.lint] select` in pyproject.toml, making lint behavior
+  version-independent. The same pass flagged two concurrency hazards
+  (push+PR runs were not actually deduped; a main push could cancel an
+  in-flight nightly), both fixed in the concurrency block.
 
 ## Canonical lane going forward
 

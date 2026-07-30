@@ -48,3 +48,8 @@ packages = ["bidpilot"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.ruff.lint]
+# Pin the enforced rule set so lint behavior does not drift with the ruff
+# version CI happens to resolve (unpinned latest vs local).
+select = ["E4", "E7", "E9", "F"]

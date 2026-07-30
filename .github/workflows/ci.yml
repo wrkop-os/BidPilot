@@ -15,9 +15,12 @@ on:
   schedule:
     - cron: "30 9 * * *"
 
+# head_ref||ref_name puts a branch push and its PR run in the same group so
+# one supersedes the other; scheduled runs get their own group and are never
+# cancelled, so a push to main can't silently kill the nightly drift check.
 concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  group: ci-${{ github.event_name == 'schedule' && 'nightly' || (github.head_ref || github.ref_name) }}
+  cancel-in-progress: ${{ github.event_name != 'schedule' }}
 
 jobs:
   lint:
