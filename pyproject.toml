@@ -36,6 +36,9 @@ dev = [
     "fastapi>=0.110",
     "uvicorn>=0.29",
 ]
+e2e = [
+    "playwright>=1.40",
+]
 
 [project.scripts]
 bidpilot = "bidpilot.cli:main"
