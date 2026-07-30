@@ -62,6 +62,29 @@ The system cannot write truthful proposals from nothing. The KB (per-tenant YAML
 
 Two reference KBs ship with the repo: `kb.example/` (minimal, used by the test suite) and `kb.pro/` (production-grade template for a 52-person SDVOSB, with 2025-2026 market-researched labor rates, DCAA-style indirect structure inside competitive wrap bands, SCA compliance doctrine, estimating benchmarks, and BOE methodology — every number sourced in `kb.pro/MARKET_RESEARCH.md`). Copy either as a starting point: `cp -r kb.pro kb`.
 
+### The Trust Manifest: proof, not promises
+
+Every exported package carries `TRUST_MANIFEST.md` + `trust_manifest.json` — an
+auditable record of what the system *enforced*, assembled from recorded facts
+(never model-written):
+
+- **Never signed, never submitted.** No code path transmits a proposal or
+  answers a certification. Signature blocks and reps & certs come back blank.
+- **No uncited company claims.** Every claim names the knowledge-base entry it
+  came from or carries `[NEEDS INPUT]`. An uncited claim is a HARD failure that
+  *blocks export* — so a package that exists has zero of them.
+- **Arithmetic is code, not model output.** Wrapped rates, escalation,
+  wage-determination floors, totals, coverage, and page counts each name the
+  deterministic function that produced them; re-run `bidpilot reprice` and the
+  numbers reproduce exactly.
+- **Every model call is fingerprinted.** Model, prompt SHA-256, tokens, and
+  duration land in `audit.jsonl`; the manifest reports the count and confirms
+  each call carries a hash.
+
+Competitors ground drafts in your content and give you citations you *may*
+check. This is the difference between being able to verify and being unable to
+ship without having verified.
+
 ### Everything is auditable (FR-18, NFR-5)
 
 `audit.jsonl` per run records every model call (model, prompt SHA-256, tokens, duration), every stage transition, every human gate decision, and the export. Runs checkpoint after every stage and resume exactly where they stopped (FR-21).
@@ -92,7 +115,7 @@ bidpilot doctor
 
 # Proactive discovery (Phase 5.1): recent notices matching your NAICS codes,
 # pre-screened deterministically (set-aside vs certs, size standard, deadline)
-bidpilot discover --days 7
+bidpilot discover --days 7            # add --grants to sweep Grants.gov too (no key)
 
 # Phase-1 "Analyst MVP": bid/no-bid in minutes — eligibility report,
 # compliance matrix, submission sheet. No drafting, no pricing.

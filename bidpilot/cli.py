@@ -56,6 +56,8 @@ def main(argv: list[str] | None = None) -> int:
     disc_p.add_argument("--kb", default=None)
     disc_p.add_argument("--days", type=int, default=7, help="Look back N days (default 7)")
     disc_p.add_argument("--all", action="store_true", help="Include blocked opportunities in output")
+    disc_p.add_argument("--grants", action="store_true",
+                        help="Also sweep Grants.gov (public API, no key) using KB capability keywords")
 
     reprice_p = sub.add_parser("reprice", help="Estimator review loop: recompute pricing after human edits to pricing_model.json")
     reprice_p.add_argument("url")
@@ -379,14 +381,20 @@ def _discover(args) -> int:
     if not sam.api_key:
         console.print("[red]SAM_GOV_API_KEY is required for discovery.[/red]")
         return 1
-    results = discover(sam, kb.profile, days_back=args.days)
+    sources = None
+    if args.grants:
+        from .intake.sources import GrantsGovSource, SamGovSource
+
+        keywords = [c.split(" (")[0][:60] for c in (kb.profile.capabilities or [])][:5]
+        sources = [SamGovSource(sam), GrantsGovSource(keywords=keywords)]
+    results = discover(sam, kb.profile, days_back=args.days, sources=sources)
     if not results:
         console.print("No opportunities found for the profile's NAICS codes in the window.")
         return 0
     from rich.table import Table
 
     table = Table(title=f"Opportunities — last {args.days} days, pre-screened")
-    for col in ("Screen", "P(win)", "Title", "NAICS", "Set-aside", "Deadline", "URL"):
+    for col in ("Screen", "P(win)", "Source", "Title", "NAICS", "Set-aside", "Deadline", "URL"):
         table.add_column(col, overflow="fold")
     shown = 0
     for opp in results:
@@ -396,6 +404,7 @@ def _discover(args) -> int:
         table.add_row(
             f"[{style}]{opp.screen}[/{style}]",
             f"~{opp.pwin:.0%}" if opp.pwin is not None else "?",
+            opp.source,
             opp.title[:70], opp.naics or "?", opp.set_aside or "—",
             opp.deadline or "?", opp.url,
         )

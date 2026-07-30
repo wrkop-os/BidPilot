@@ -126,6 +126,12 @@ def assemble_and_export(state, audit: AuditLog) -> Path:
     }
     _write(out / "manifest.json", json.dumps(manifest, indent=2))
 
+    # Exportable proof of what was enforced (docs/COMPETITIVE_BENCHMARK.md:
+    # rivals let you check citations; this package proves they were required).
+    from .trust import write_trust_manifest
+
+    write_trust_manifest(state, out / "audit.jsonl")
+
     skip = {"attachments", "api_cache"}
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
         for path in sorted(out.rglob("*")):

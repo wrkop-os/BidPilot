@@ -39,6 +39,12 @@ Conventions:
 
 ## Completed
 
+- [x] Competitive benchmark stage 2 - docs/COMPETITIVE_BENCHMARK.md (2026-07-30)
+- [x] Trust Manifest exported with every package (2026-07-30)
+- [x] Multi-source discovery: Grants.gov behind a pluggable interface (2026-07-30)
+- [x] Click-path audit: 6 UI/state bugs fixed, incl. a dashboard-bricking
+      failure and a stale-click gate leak (2026-07-30)
+
 - [x] Automation audit + canonical CI lane (lint/e2e/evals/nightly) +
       dead-state cleanup; evidence in docs/AUTOMATION_AUDIT.md
       (2026-07-30) — earlier completed blocks moved to ops/ARCHIVE.md

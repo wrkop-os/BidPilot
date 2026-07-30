@@ -41,6 +41,7 @@ class ScreenedOpportunity:
     reasons: list[str] = field(default_factory=list)
     url: str = ""
     pwin: Optional[float] = None       # heuristic advisory, ranks within a bucket
+    source: str = "sam.gov"
 
 
 def prescreen(record: dict, profile: CompanyProfile, today: Optional[_dt.date] = None) -> ScreenedOpportunity:
@@ -60,12 +61,27 @@ def prescreen(record: dict, profile: CompanyProfile, today: Optional[_dt.date] =
         url=f"https://sam.gov/opp/{notice_id}/view" if notice_id else "",
     )
 
+    opp.source = record.get("source") or "sam.gov"
+    if record.get("url"):
+        opp.url = record["url"]
+
     # 1. Deadline already passed -> blocked.
     deadline_date = _parse_date(opp.deadline)
     if deadline_date and deadline_date < today:
         opp.screen = "blocked"
         opp.reasons.append(f"deadline passed ({opp.deadline})")
         opp.pwin = 0.0
+        return opp
+
+    # Grants carry no NAICS or set-aside: the socioeconomic/size screens do
+    # not apply, so say so rather than implying they passed.
+    if record.get("grant"):
+        opp.screen = "review"
+        opp.reasons.append(
+            "grant opportunity — set-aside and size-standard screens do not "
+            "apply; eligibility is per the funding announcement"
+        )
+        opp.pwin = _quick_pwin(opp, profile)
         return opp
 
     # 2. Set-aside vs certifications.
@@ -134,29 +150,23 @@ def discover(
     profile: CompanyProfile,
     days_back: int = 7,
     limit_per_naics: int = 25,
+    sources: Optional[list] = None,
 ) -> list[ScreenedOpportunity]:
-    """Search recent opportunities per registered NAICS and pre-screen."""
+    """Search recent opportunities across every configured source, pre-screen,
+    and rank. `sources` defaults to SAM.gov alone; pass extras (grants, SLED)
+    to widen the funnel without touching the screening logic."""
+    from .intake.sources import SamGovSource, search_all
+
     today = _dt.date.today()
-    posted_from = (today - _dt.timedelta(days=days_back)).strftime("%m/%d/%Y")
-    posted_to = today.strftime("%m/%d/%Y")
     seen: set[str] = set()
     results: list[ScreenedOpportunity] = []
-    for naics in profile.naics_codes or []:
-        data = sam.search_raw(
-            {
-                "ncode": naics,
-                "postedFrom": posted_from,
-                "postedTo": posted_to,
-                "limit": limit_per_naics,
-                "ptype": "o,k,p,r",  # solicitations, combined, presol, sources sought
-            }
-        )
-        for record in data.get("opportunitiesData") or []:
-            notice_id = (record.get("noticeId") or "").lower()
-            if not notice_id or notice_id in seen:
-                continue
-            seen.add(notice_id)
-            results.append(prescreen(record, profile, today))
+    feeds = sources if sources is not None else [SamGovSource(sam)]
+    for record in search_all(feeds, profile.naics_codes or [], days_back, limit_per_naics):
+        notice_id = (record.get("noticeId") or "").lower()
+        if not notice_id or notice_id in seen:
+            continue
+        seen.add(notice_id)
+        results.append(prescreen(record, profile, today))
     order = {"candidate": 0, "review": 1, "blocked": 2}
     results.sort(
         key=lambda o: (order.get(o.screen, 3), -(o.pwin or 0.0), o.deadline or "9999")
