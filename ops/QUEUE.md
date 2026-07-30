@@ -13,6 +13,9 @@ Conventions:
 
 ## Active
 
+- [ ] Competitive benchmark stage 2: score the 8 profiled rivals per
+      benchmark-methodology (docs/COMPETITIVE_LANDSCAPE.md) (added 2026-07-29)
+
 - [ ] Enable the daily sweep Routine once SAM_GOV_API_KEY is set on the
       environment (trigger: "BidPilot daily opportunity sweep", currently
       disabled) (added 2026-07-29)
