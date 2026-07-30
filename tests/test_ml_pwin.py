@@ -137,3 +137,18 @@ def test_eligibility_stage_attaches_advisory(tmp_path):
     assert "P(win) advisory" in state.eligibility.pwin_advisory
     # The advisory is informational: the recommendation is untouched.
     assert state.eligibility.bid_recommendation == BidRecommendation.BID
+
+
+def test_corrected_outcome_supersedes_earlier_label(tmp_path):
+    """Won then Lost for one notice must train as one label, not two."""
+    f = PwinFeatures(set_aside_held=1.0)
+    record_outcome(tmp_path, "a" * 32, "won", f, ts=100.0)
+    record_outcome(tmp_path, "a" * 32, "won", f, ts=101.0)   # double-click
+    record_outcome(tmp_path, "a" * 32, "lost", f, ts=102.0)  # correction
+    record_outcome(tmp_path, "b" * 32, "won", f, ts=103.0)
+    rows = load_outcomes(tmp_path)
+    assert len(rows) == 2
+    by_id = {r["notice_id"]: r["outcome"] for r in rows}
+    assert by_id["a" * 32] == "lost" and by_id["b" * 32] == "won"
+    # The audit trail on disk keeps every report.
+    assert len(load_outcomes(tmp_path, latest_only=False)) == 4

@@ -107,3 +107,46 @@ def test_ui_served():
     page = client.get("/")
     assert page.status_code == 200
     assert "Paste a SAM.gov listing" in page.text
+
+
+def test_failed_ctx_builder_does_not_brick_the_dashboard(tmp_path):
+    """A ctx_builder failure (missing ./kb is the likeliest first-run error)
+    must not leave a ctx-less handle that makes every later poll 500."""
+    def exploding(url, out_root, confirm, console):
+        raise FileNotFoundError("No knowledge base directory found.")
+
+    app = create_app(ctx_builder=exploding, output_root=tmp_path)
+    client = TestClient(app, raise_server_exceptions=False)
+    started = client.post("/api/runs", json={"url": NOTICE})
+    assert started.status_code == 500
+    assert "knowledge base" in started.json()["detail"]
+    # The dashboard still works for every run.
+    assert client.get("/api/runs").status_code == 200
+    assert client.get("/api/runs").json() == []
+
+
+def test_stale_gate_answer_cannot_answer_the_next_gate(tmp_path):
+    """A click aimed at gate N must never approve gate N+1 (FR-13)."""
+    app = create_app(ctx_builder=_fake_ctx_builder, output_root=tmp_path)
+    client = TestClient(app)
+    client.post("/api/runs", json={"url": NOTICE})
+    first = _wait(client, NOTICE, lambda s: s["pending_gate"])
+    stale_token = first["gate_token"]
+    assert stale_token
+    assert client.post(
+        f"/api/runs/{NOTICE}/gate", json={"approve": True, "token": stale_token}
+    ).status_code == 200
+
+    second = _wait(client, NOTICE,
+                   lambda s: (s["pending_gate"] and s["gate_token"] != stale_token)
+                   or not s["running"])
+    if second["pending_gate"]:
+        # The stale token is refused; the new gate is still waiting on a human.
+        replay = client.post(
+            f"/api/runs/{NOTICE}/gate", json={"approve": True, "token": stale_token}
+        )
+        assert replay.status_code == 409
+        assert client.get(f"/api/runs/{NOTICE}").json()["pending_gate"]
+        client.post(f"/api/runs/{NOTICE}/gate",
+                    json={"approve": False, "token": second["gate_token"]})
+    _wait(client, NOTICE, lambda s: not s["running"])

@@ -177,12 +177,25 @@ def record_outcome(
     return path
 
 
-def load_outcomes(output_root: Path) -> list[dict]:
+def load_outcomes(output_root: Path, latest_only: bool = True) -> list[dict]:
+    """Outcome rows, newest-wins per notice by default.
+
+    The file is an append-only audit trail, so a corrected report (or a
+    double-click) leaves several rows for one notice. Training must see one
+    label per bid — otherwise a Won-then-Lost correction feeds the model two
+    contradictory examples, and a double-click double-weights one bid.
+    """
     path = output_root / OUTCOMES_NAME
     if not path.exists():
         return []
-    return [
+    rows = [
         json.loads(line)
         for line in path.read_text(encoding="utf-8").splitlines()
         if line.strip()
     ]
+    if not latest_only:
+        return rows
+    latest: dict[str, dict] = {}
+    for row in rows:  # file order is chronological; last write wins
+        latest[row.get("notice_id", "")] = row
+    return list(latest.values())

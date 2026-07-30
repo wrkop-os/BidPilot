@@ -15,6 +15,7 @@ from __future__ import annotations
 import io
 import threading
 import uuid
+import uuid
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -44,6 +45,7 @@ class RunHandle:
         self._gate_answer: Optional[bool] = None
         self._gate_event = threading.Event()
         self.error: Optional[str] = None
+        self.outcome_recorded: Optional[str] = None
         self.log = io.StringIO()
         self.lock = threading.Lock()
 
@@ -84,7 +86,7 @@ class StartRun(BaseModel):
 
 class GateAnswer(BaseModel):
     approve: bool
-    token: Optional[str] = None
+    token: Optional[str] = None  # echoed from status; rejects stale answers
 
 
 class OutcomeReq(BaseModel):
@@ -119,13 +121,23 @@ def create_app(ctx_builder: CtxBuilder = default_ctx_builder,
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc))
         with runs_lock:
-            handle = runs.get(notice_id)
-            if handle and handle.running:
+            existing = runs.get(notice_id)
+            if existing and existing.running:
                 raise HTTPException(status_code=409, detail="Run already in progress for this notice.")
-            handle = RunHandle(notice_id)
-            runs[notice_id] = handle
+        # Build the context BEFORE registering the handle: a ctx_builder
+        # failure (missing ./kb is the likeliest first-run error) must not
+        # leave a ctx-less handle in `runs`, which would make every later
+        # /api/runs poll raise and brick the whole dashboard.
+        handle = RunHandle(notice_id)
         console = Console(file=handle.log, width=100, no_color=True)
-        handle.ctx = ctx_builder(req.url, output_root, handle.confirm, console)
+        try:
+            handle.ctx = ctx_builder(req.url, output_root, handle.confirm, console)
+        except Exception as exc:
+            raise HTTPException(
+                status_code=500, detail=f"Could not start run: {type(exc).__name__}: {exc}"
+            )
+        with runs_lock:
+            runs[notice_id] = handle
         handle.thread = threading.Thread(
             target=_pipeline, args=(handle, req.url, req.analyze_only), daemon=True
         )
@@ -149,8 +161,11 @@ def create_app(ctx_builder: CtxBuilder = default_ctx_builder,
         handle = runs.get(notice_id)
         if not handle:
             raise HTTPException(status_code=404, detail="Unknown run.")
-        if not handle.answer_gate(req.approve):
-            raise HTTPException(status_code=409, detail="No gate is pending.")
+        if not handle.answer_gate(req.approve, req.token):
+            raise HTTPException(
+                status_code=409,
+                detail="No matching gate is pending (the question may have already been answered).",
+            )
         return {"ok": True}
 
     @app.post("/api/runs/{notice_id}/outcome")
@@ -167,6 +182,7 @@ def create_app(ctx_builder: CtxBuilder = default_ctx_builder,
             raise HTTPException(status_code=409, detail="Run has no eligibility report yet.")
         features = build_features(state.notice.metadata, state.eligibility, handle.ctx.kb)
         record_outcome(output_root, state.notice.metadata.notice_id, req.outcome, features)
+        handle.outcome_recorded = req.outcome  # UI reflects it; no silent re-click
         return {"ok": True, "outcome": req.outcome}
 
     @app.get("/api/runs/{notice_id}/files/{file_path:path}")
@@ -209,6 +225,8 @@ def create_app(ctx_builder: CtxBuilder = default_ctx_builder,
             ),
             "pwin_advisory": state.eligibility.pwin_advisory if state.eligibility else None,
             "pending_gate": handle.pending_gate,
+            "gate_token": handle.gate_token,
+            "outcome_recorded": handle.outcome_recorded,
             "halted_reason": state.halted_reason,
             "error": handle.error,
             "export_path": state.export_path,
@@ -257,19 +275,24 @@ async function startRun(){
   const url=document.getElementById('url').value.trim();
   const analyze_only=document.getElementById('analyzeOnly').checked;
   const r=await fetch('/api/runs',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url,analyze_only})});
-  document.getElementById('startErr').textContent=r.ok?'':(await r.json()).detail;
+  let msg='';
+  if(!r.ok){ try{ msg=(await r.json()).detail; }catch(e){ msg='Could not start run (HTTP '+r.status+').'; } }
+  document.getElementById('startErr').textContent=msg;
   refresh();
 }
 async function outcome(id,o){
   const r=await fetch(`/api/runs/${id}/outcome`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({outcome:o})});
-  if(r.ok) alert('Outcome recorded — P(win) training data captured.');
+  if(!r.ok){ alert('Outcome not recorded (HTTP '+r.status+').'); }
+  refresh();
 }
-async function gate(id,approve){
-  await fetch(`/api/runs/${id}/gate`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({approve})});
+async function gate(id,approve,token){
+  const r=await fetch(`/api/runs/${id}/gate`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({approve,token})});
+  if(r.status===409){ alert('That question was already answered — refreshing.'); }
   refresh();
 }
 async function refresh(){
   const runs=await (await fetch('/api/runs')).json();
+  const open=[...document.querySelectorAll('details[open]')].map(d=>d.id).filter(Boolean);
   document.getElementById('runs').innerHTML=runs.map(r=>{
   const nid=esc(r.notice_id);
   return `
@@ -279,20 +302,25 @@ async function refresh(){
     ${r.response_plan?`<div class='small'>listing analysis says respond with: <b>${esc(r.response_plan)}</b></div>`:''}
     ${r.bid_recommendation?`<div class='small'>bid recommendation: <b>${esc(r.bid_recommendation)}</b></div>`:''}
     ${r.pending_gate?`<div class='gate'><b>HUMAN GATE:</b> ${esc(r.pending_gate)}<br>
-      <button onclick='gate("${nid}",true)'>Approve</button>
-      <button class='decline' onclick='gate("${nid}",false)'>Decline</button></div>`:''}
+      <button onclick='gate("${nid}",true,"${esc(r.gate_token||"")}")'>Approve</button>
+      <button class='decline' onclick='gate("${nid}",false,"${esc(r.gate_token||"")}")'>Decline</button></div>`:''}
     ${r.halted_reason?`<div class='err'>halted: ${esc(r.halted_reason)}</div>`:''}
     ${r.error?`<div class='err'>${esc(r.error)}</div>`:''}
     ${r.pwin_advisory?`<div class='small'>${esc(r.pwin_advisory)}</div>`:''}
-    ${r.export_path?`<div>📦 exported package ready &middot; record outcome:
+    ${r.export_path?`<div>📦 exported package ready &middot; ${r.outcome_recorded
+      ?`outcome recorded: <b>${esc(r.outcome_recorded)}</b> (click to correct)`
+      :'record outcome:'}
       <button onclick='outcome("${nid}","won")'>Won</button>
       <button onclick='outcome("${nid}","lost")' class='decline'>Lost</button>
       <button onclick='outcome("${nid}","no_bid")'>No-bid</button></div>`:''}
-    <details><summary class='small'>artifacts (${r.artifacts.length})</summary>
+    <details id='d-${nid}-art'><summary class='small'>artifacts (${r.artifacts.length})</summary>
       ${r.artifacts.map(a=>`<a href='/api/runs/${nid}/files/${esc(a)}' target='_blank'>${esc(a)}</a>`).join('<br>')}
     </details>
-    <details><summary class='small'>log</summary><pre>${esc(r.log_tail||'')}</pre></details>
+    <details id='d-${nid}-log'><summary class='small'>log</summary><pre>${esc(r.log_tail||'')}</pre></details>
   </section>`}).join('');
+  // Re-open panels the operator had expanded: the 2s poll replaces the whole
+  // subtree, which would otherwise slam the log shut while they are reading it.
+  open.forEach(id=>{const el=document.getElementById(id); if(el) el.open=true;});
 }
 setInterval(refresh,2000);refresh();
 </script></body></html>"""

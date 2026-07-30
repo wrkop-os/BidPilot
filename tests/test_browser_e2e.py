@@ -155,14 +155,12 @@ def test_browser_full_run_gates_export_outcome(server, page, output_root):
     expect(dash_link).to_be_attached(timeout=STEP_TIMEOUT * 1000)
 
     # Record the outcome from the browser -> P(win) training label on disk.
-    # The confirmation alert only fires after a 200, so once the dialog shows
-    # the outcome row is already on disk.
-    with page.expect_event("dialog", timeout=STEP_TIMEOUT * 1000) as dlg_info:
-        page.get_by_role("button", name="Won", exact=True).click()
-    dialog = dlg_info.value
-    message = dialog.message
-    dialog.accept()
-    assert "Outcome recorded" in message
+    # Success is a visible state change (not an alert): the panel reports the
+    # recorded label, so a user never re-clicks blind and double-labels a bid.
+    page.get_by_role("button", name="Won", exact=True).click()
+    expect(page.get_by_text("outcome recorded:")).to_be_visible(
+        timeout=STEP_TIMEOUT * 1000
+    )
 
     outcomes = output_root / OUTCOMES_NAME
     assert outcomes.exists(), f"{OUTCOMES_NAME} was not written to the output root"
