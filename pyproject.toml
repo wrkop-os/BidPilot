@@ -33,6 +33,7 @@ ml = [
 dev = [
     "pytest>=8.0",
     "pytest-mock>=3.12",
+    "pytest-xdist>=3.5",
     "fastapi>=0.110",
     "uvicorn>=0.29",
 ]

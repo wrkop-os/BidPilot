@@ -10,6 +10,7 @@ federal proposal package. Built to `README.md`'s PRD; read that first.
 ```bash
 pip install -e ".[dev,tables]"   # tables = pdfplumber; add [server] for the web UI
 python -m pytest -q              # full suite: deterministic, no network/keys
+python -m pytest -q -n auto --dist loadfile   # same suite ~2x faster locally (see docs/TEST_SUITE_PERF.md)
 python -m pytest tests/test_rates.py::test_wrap_rate -q   # single test
 bidpilot doctor                  # env checks (--network pings the SAM API)
 bidpilot serve --port 8400       # web UI: paste listing URL, gates in browser
