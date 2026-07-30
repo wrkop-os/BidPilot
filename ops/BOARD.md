@@ -1,0 +1,18 @@
+# Agent board — improvement sprint 2026-07-29
+
+Operating model per team-agent-orchestration: one owner per card, no
+overlapping writes (writer cards get worktrees; review cards report to the
+integrator), merge gate = full suite green + integrator diff review.
+Integrator: main session.
+
+| ID | Card | Owner | State | Scope | Acceptance | Merge gate |
+|---|---|---|---|---|---|---|
+| C1 | Security + API review of the web surface | security agent | running | READ: bidpilot/server.py, routing.py, ml/, mle/ — report-only | severity-ranked findings w/ concrete fixes; no false-positive noise | integrator applies fixes; suite green |
+| C2 | Competitive benchmark stage 2 (score 8 rivals) | research agent | running | WRITE: docs/COMPETITIVE_BENCHMARK.md via integrator | 9-dimension scores + tension plot + primary-source verification | integrator review; sources cited |
+| C3 | Prompt review (shredder/writers/QA vs recall target) | prompt agent | running | READ: bidpilot/agents/*.py prompts — proposals only, NOT applied | per-prompt findings + proposed rewrites + expected failure modes | BLOCKED-on-application: needs Phase-0 evals to validate; doc merges, prompts do not change |
+| C4 | Browser e2e: paste listing -> gates -> export in real Chromium | e2e agent (worktree) | running | WRITE: tests/test_browser_e2e.py (+ pyproject extra if needed) | new test passes headless vs real server+UI; skips cleanly without chromium; full suite green in worktree | integrator merges worktree; CI green |
+| C5 | Multi-source discovery (Grants.gov/SLED behind discover) | unassigned | backlog | bidpilot/intake/, discover.py | pluggable OpportunitySource + 1 new source + mocked tests | shaped but deferred: verify Grants.gov API contract before assigning |
+| C6 | Trust-invariants marketing surface | unassigned | backlog | site/README | copy that states fail-closed guarantees plainly | needs user's voice/brand input |
+
+Evidence and handoffs land in docs/ (C1-C3) and the C4 worktree branch;
+board updated by the integrator as cards move.
