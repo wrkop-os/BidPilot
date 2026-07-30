@@ -15,7 +15,6 @@ from __future__ import annotations
 import io
 import threading
 import uuid
-import uuid
 from pathlib import Path
 from typing import Callable, Optional
 
