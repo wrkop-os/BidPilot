@@ -80,8 +80,13 @@ class SamGovClient:
                 if attempt < self.MAX_RETRIES:
                     self._backoff(attempt, resp.headers.get("retry-after"))
                     continue
-                resp.raise_for_status()
-            resp.raise_for_status()
+            if resp.status_code >= 400:
+                # Redact the query string: httpx's default message embeds the
+                # full URL, which would leak api_key into logs/UI error fields.
+                raise httpx.HTTPStatusError(
+                    f"{resp.status_code} error from {resp.request.url.copy_with(query=None)}",
+                    request=resp.request, response=resp,
+                )
             return resp
         raise last_exc  # transport errors exhausted retries
 
@@ -253,6 +258,12 @@ class SamGovClient:
         if isinstance(desc, str) and desc.startswith("http"):
             try:
                 url = desc
+                host = httpx.URL(url).host or ""
+                if host != "sam.gov" and not host.endswith(".sam.gov"):
+                    # A poisoned record could point anywhere; never follow it,
+                    # and never send the API key off the trusted host (SSRF /
+                    # credential exfiltration guard).
+                    return ""
                 if self.api_key and "api_key" not in url:
                     url += ("&" if "?" in url else "?") + f"api_key={self.api_key}"
                 resp = self._get(url)

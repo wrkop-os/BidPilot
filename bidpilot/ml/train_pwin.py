@@ -74,9 +74,18 @@ def train(output_root: Path, model_out: Path) -> dict:
 
     model_out.parent.mkdir(parents=True, exist_ok=True)
     joblib.dump(model, model_out)
+    # Integrity stamp: serving verifies this hash before joblib.load (which
+    # is pickle — arbitrary code execution if the artifact is swapped).
+    metrics["model_sha256"] = _sha256(model_out)
     metrics_path = model_out.with_suffix(".metrics.json")
     metrics_path.write_text(json.dumps(metrics, indent=2), encoding="utf-8")
     return metrics
+
+
+def _sha256(path: Path) -> str:
+    import hashlib
+
+    return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
 def main(argv: list[str] | None = None) -> int:

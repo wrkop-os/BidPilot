@@ -103,13 +103,19 @@ def heuristic_score(features: PwinFeatures) -> float:
 
 
 def _promoted(model_path: str) -> None:
-    """Fail-closed promotion check: the trainer's metrics sidecar must exist
-    and say ships=true (Brier beat the heuristic), else the artifact does
-    not serve — no sidecar, no service."""
+    """Fail-closed promotion check: the trainer's metrics sidecar must exist,
+    say ships=true (Brier beat the heuristic), AND match the artifact's
+    sha256 — joblib.load is pickle, so a swapped artifact is code execution,
+    not just a bad score. No sidecar, no hash match, no service."""
     sidecar = Path(model_path).with_suffix(".metrics.json")
     metrics = json.loads(sidecar.read_text(encoding="utf-8"))
     if metrics.get("ships") is not True:
         raise RuntimeError("artifact not promoted (metrics ships!=true)")
+    import hashlib
+
+    actual = hashlib.sha256(Path(model_path).read_bytes()).hexdigest()
+    if metrics.get("model_sha256") != actual:
+        raise RuntimeError("artifact hash mismatch vs promotion record")
 
 
 def score(features: PwinFeatures) -> PwinEstimate:

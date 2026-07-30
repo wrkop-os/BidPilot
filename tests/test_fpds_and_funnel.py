@@ -120,3 +120,33 @@ def test_web_outcome_endpoint(tmp_path):
     ).status_code == 422
     # Unblock the pipeline thread so the test run finishes cleanly.
     client.post(f"/api/runs/{NOTICE}/gate", json={"approve": False})
+
+
+def test_parse_atom_rejects_dtd():
+    import pytest as _pytest
+
+    bomb = '<?xml version="1.0"?><!DOCTYPE x [<!ENTITY a "aaaa">]><feed>&a;</feed>'
+    with _pytest.raises(ValueError, match="DTD"):
+        parse_atom(bomb)
+
+
+def test_sensitive_run_files_not_listed_or_served(tmp_path):
+    from fastapi.testclient import TestClient
+
+    from bidpilot.server import create_app
+    from test_server import _fake_ctx_builder, _wait
+    from test_orchestrator_e2e import NOTICE
+
+    app = create_app(ctx_builder=_fake_ctx_builder, output_root=tmp_path)
+    client = TestClient(app)
+    client.post("/api/runs", json={"url": NOTICE})
+    status = _wait(client, NOTICE, lambda s: s["pending_gate"] or not s["running"])
+    run_dir = tmp_path / NOTICE
+    (run_dir / "training_capture.jsonl").write_text('{"prompt": "secret"}')
+    status = client.get(f"/api/runs/{NOTICE}").json()
+    assert "training_capture.jsonl" not in status["artifacts"]
+    assert "audit.jsonl" not in status["artifacts"]
+    assert client.get(
+        f"/api/runs/{NOTICE}/files/training_capture.jsonl"
+    ).status_code == 403
+    client.post(f"/api/runs/{NOTICE}/gate", json={"approve": False})

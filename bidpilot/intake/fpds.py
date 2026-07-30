@@ -50,6 +50,10 @@ def _attr(el: ElementTree.Element, name: str) -> Optional[str]:
 def parse_atom(xml_text: str) -> list[AwardRecord]:
     """Namespace-tolerant ATOM parse — FPDS versions its schemas, so match
     on local names only."""
+    if "<!DOCTYPE" in xml_text[:4096] or "<!ENTITY" in xml_text[:4096]:
+        # stdlib ElementTree expands internal DTD entities (billion-laughs
+        # DoS). Legitimate FPDS ATOM never carries a DTD — reject outright.
+        raise ValueError("Refusing to parse XML containing a DTD/entity declaration")
     root = ElementTree.fromstring(xml_text)
     records: list[AwardRecord] = []
     for entry in (e for e in root.iter() if _local(e.tag) == "entry"):

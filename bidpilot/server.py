@@ -13,7 +13,9 @@ the same JSON API.
 from __future__ import annotations
 
 import io
+import secrets
 import threading
+import uuid
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -28,6 +30,10 @@ from .state import Stage
 
 CtxBuilder = Callable[..., "orchestrator.RunContext"]
 
+# Never listed or served over HTTP: raw prompts (may embed solicitation text
+# and company KB facts) and the audit log stay filesystem-only.
+SENSITIVE_RUN_FILES = {"training_capture.jsonl", "audit.jsonl"}
+
 
 class RunHandle:
     def __init__(self, notice_id: str):
@@ -35,6 +41,7 @@ class RunHandle:
         self.thread: Optional[threading.Thread] = None
         self.ctx = None
         self.pending_gate: Optional[str] = None
+        self.gate_token: Optional[str] = None
         self._gate_answer: Optional[bool] = None
         self._gate_event = threading.Event()
         self.error: Optional[str] = None
@@ -45,15 +52,22 @@ class RunHandle:
         """Runs on the pipeline thread: expose the gate, block for the API."""
         with self.lock:
             self.pending_gate = question
+            self.gate_token = uuid.uuid4().hex   # binds an answer to THIS gate
+            self._gate_answer = None
             self._gate_event.clear()
         self._gate_event.wait()
         with self.lock:
             self.pending_gate = None
+            self.gate_token = None
             return bool(self._gate_answer)
 
-    def answer_gate(self, approve: bool) -> bool:
+    def answer_gate(self, approve: bool, token: Optional[str] = None) -> bool:
         with self.lock:
             if self.pending_gate is None:
+                return False
+            # A token, when supplied, must match the pending gate — an answer
+            # meant for a prior gate (double-submit / stale client) is rejected.
+            if token is not None and token != self.gate_token:
                 return False
             self._gate_answer = approve
         self._gate_event.set()
@@ -71,6 +85,7 @@ class StartRun(BaseModel):
 
 class GateAnswer(BaseModel):
     approve: bool
+    token: Optional[str] = None
 
 
 class OutcomeReq(BaseModel):
@@ -164,6 +179,8 @@ def create_app(ctx_builder: CtxBuilder = default_ctx_builder,
         target = (run_dir / file_path).resolve()
         if run_dir not in target.parents and target != run_dir:
             raise HTTPException(status_code=403, detail="Path escapes the run directory.")
+        if target.name in SENSITIVE_RUN_FILES:
+            raise HTTPException(status_code=403, detail="Not served over the web UI.")
         if not target.is_file():
             raise HTTPException(status_code=404, detail="No such artifact.")
         return FileResponse(target)
@@ -175,7 +192,8 @@ def create_app(ctx_builder: CtxBuilder = default_ctx_builder,
         if run_dir.exists():
             for p in sorted(run_dir.rglob("*")):
                 rel = p.relative_to(run_dir)
-                if p.is_file() and rel.parts[0] not in ("attachments", "api_cache"):
+                if (p.is_file() and rel.parts[0] not in ("attachments", "api_cache")
+                        and p.name not in SENSITIVE_RUN_FILES):
                     artifacts.append(str(rel))
         classification = state.classification
         return {
@@ -235,6 +253,7 @@ a{color:#1f3a5f}.small{font-size:12px;color:#666}
 <div id='runs'></div>
 </main>
 <script>
+const esc=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 async function startRun(){
   const url=document.getElementById('url').value.trim();
   const analyze_only=document.getElementById('analyzeOnly').checked;
@@ -252,27 +271,29 @@ async function gate(id,approve){
 }
 async function refresh(){
   const runs=await (await fetch('/api/runs')).json();
-  document.getElementById('runs').innerHTML=runs.map(r=>`
+  document.getElementById('runs').innerHTML=runs.map(r=>{
+  const nid=esc(r.notice_id);
+  return `
   <section>
-    <b>${r.title||r.notice_id}</b> <span class='small'>run ${r.run_id} · ${r.running?'running':'idle'}</span><br>
-    ${r.stages.map(s=>`<span class='stage ${s.done?'done':'todo'}'>${s.stage}</span>`).join('')}
-    ${r.response_plan?`<div class='small'>listing analysis says respond with: <b>${r.response_plan}</b></div>`:''}
-    ${r.bid_recommendation?`<div class='small'>bid recommendation: <b>${r.bid_recommendation}</b></div>`:''}
-    ${r.pending_gate?`<div class='gate'><b>HUMAN GATE:</b> ${r.pending_gate}<br>
-      <button onclick='gate("${r.notice_id}",true)'>Approve</button>
-      <button class='decline' onclick='gate("${r.notice_id}",false)'>Decline</button></div>`:''}
-    ${r.halted_reason?`<div class='err'>halted: ${r.halted_reason}</div>`:''}
-    ${r.error?`<div class='err'>${r.error}</div>`:''}
-    ${r.pwin_advisory?`<div class='small'>${r.pwin_advisory}</div>`:''}
+    <b>${esc(r.title||r.notice_id)}</b> <span class='small'>run ${esc(r.run_id)} · ${r.running?'running':'idle'}</span><br>
+    ${r.stages.map(s=>`<span class='stage ${s.done?'done':'todo'}'>${esc(s.stage)}</span>`).join('')}
+    ${r.response_plan?`<div class='small'>listing analysis says respond with: <b>${esc(r.response_plan)}</b></div>`:''}
+    ${r.bid_recommendation?`<div class='small'>bid recommendation: <b>${esc(r.bid_recommendation)}</b></div>`:''}
+    ${r.pending_gate?`<div class='gate'><b>HUMAN GATE:</b> ${esc(r.pending_gate)}<br>
+      <button onclick='gate("${nid}",true)'>Approve</button>
+      <button class='decline' onclick='gate("${nid}",false)'>Decline</button></div>`:''}
+    ${r.halted_reason?`<div class='err'>halted: ${esc(r.halted_reason)}</div>`:''}
+    ${r.error?`<div class='err'>${esc(r.error)}</div>`:''}
+    ${r.pwin_advisory?`<div class='small'>${esc(r.pwin_advisory)}</div>`:''}
     ${r.export_path?`<div>📦 exported package ready &middot; record outcome:
-      <button onclick='outcome("${r.notice_id}","won")'>Won</button>
-      <button onclick='outcome("${r.notice_id}","lost")' class='decline'>Lost</button>
-      <button onclick='outcome("${r.notice_id}","no_bid")'>No-bid</button></div>`:''}
+      <button onclick='outcome("${nid}","won")'>Won</button>
+      <button onclick='outcome("${nid}","lost")' class='decline'>Lost</button>
+      <button onclick='outcome("${nid}","no_bid")'>No-bid</button></div>`:''}
     <details><summary class='small'>artifacts (${r.artifacts.length})</summary>
-      ${r.artifacts.map(a=>`<a href='/api/runs/${r.notice_id}/files/${a}' target='_blank'>${a}</a>`).join('<br>')}
+      ${r.artifacts.map(a=>`<a href='/api/runs/${nid}/files/${esc(a)}' target='_blank'>${esc(a)}</a>`).join('<br>')}
     </details>
-    <details><summary class='small'>log</summary><pre>${(r.log_tail||'').replace(/</g,'&lt;')}</pre></details>
-  </section>`).join('');
+    <details><summary class='small'>log</summary><pre>${esc(r.log_tail||'')}</pre></details>
+  </section>`}).join('');
 }
 setInterval(refresh,2000);refresh();
 </script></body></html>"""

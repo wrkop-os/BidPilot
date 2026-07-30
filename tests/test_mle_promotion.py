@@ -77,3 +77,16 @@ def test_promoted_pwin_artifact_serves_with_stamp(tmp_path, monkeypatch):
     assert metrics["trained_at"] > 0
     monkeypatch.setenv("BIDPILOT_PWIN_MODEL", str(model))
     assert score(PwinFeatures(set_aside_held=1.0, relevant_past_perf=3.0)).method == "model"
+
+
+def test_tampered_artifact_never_serves(tmp_path, monkeypatch):
+    """ships:true sidecar with a hash mismatch (swapped artifact) -> fallback."""
+    import json as _json
+
+    model = tmp_path / "pwin.joblib"
+    model.write_bytes(b"swapped payload")
+    model.with_suffix(".metrics.json").write_text(
+        _json.dumps({"ships": True, "model_sha256": "0" * 64})
+    )
+    monkeypatch.setenv("BIDPILOT_PWIN_MODEL", str(model))
+    assert score(PwinFeatures(set_aside_held=1.0)).method == "heuristic-fallback"
