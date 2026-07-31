@@ -185,4 +185,21 @@ def pricing_check(pricing: PricingModel) -> list[QAFinding]:
             QAFinding(severity=QASeverity.SOFT, category="consistency",
                       description=f"[QUOTE NEEDED] {item}")
         )
+    # Regulatory findings on the cost volume (pricing/compliance.py). A hard
+    # finding is an unambiguous legal defect computable from the numbers, so it
+    # blocks export exactly like a wage-determination violation; soft and info
+    # findings surface for the reviewer without gating.
+    for finding in pricing.compliance_findings:
+        severity = {
+            "hard": QASeverity.HARD,
+            "soft": QASeverity.SOFT,
+        }.get(finding.severity, QASeverity.INFO)
+        findings.append(
+            QAFinding(
+                severity=severity,
+                category="compliance",
+                description=f"{finding.rule} — {finding.detail}",
+                location=finding.location,
+            )
+        )
     return findings

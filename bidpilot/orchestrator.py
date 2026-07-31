@@ -33,6 +33,8 @@ from .agents import (
 )
 from .assembly import assemble_and_export, write_stage_artifacts
 from .audit import AuditLog
+from .data import sba_size_standards
+from .data.clause_patterns import scan_clauses
 from .docproc import process_attachments
 from .docproc import ocr as ocr_mod
 from .intake import (
@@ -45,6 +47,7 @@ from .intake import (
 from .kb.store import KnowledgeBase
 from .models import HumanApproval, QAReport, ResponseArtifact
 from .pricing import boe as boe_mod
+from .pricing import compliance
 from .pricing import estimator as estimator_mod
 from .pricing import rates as rates_mod
 from .pricing import structure as structure_mod
@@ -417,8 +420,23 @@ def _price(ctx: RunContext) -> PricingModel:
         fringe=0.0, overhead=0.0, gna=0.0, fee=0.0
     )
     option_years = _count_option_years(structure)
+
+    # Which pricing clauses the solicitation actually carries decides how the
+    # cost volume must be built — notably whether SCA categories may escalate
+    # at all (FAR 52.222-43(b) warrants that they do not). Deterministic scan;
+    # the solicitation governs, never the dollar value.
+    clauses = [h.clause for h in scan_clauses(state.doc_tree.corpus())] if state.doc_tree else []
+    sca_price_adjustment = any(
+        c in clause for clause in clauses for c in ("52.222-43", "52.222-44")
+    )
+
     priced, violations, unresolved = rates_mod.price_estimate(
-        estimate, ctx.kb.direct_rates(), indirects, wd, option_years=option_years
+        estimate,
+        ctx.kb.direct_rates(),
+        indirects,
+        wd,
+        option_years=option_years,
+        sca_price_adjustment=sca_price_adjustment,
     )
     pricing = PricingModel(
         structure=structure,
@@ -468,7 +486,38 @@ def _price(ctx: RunContext) -> PricingModel:
                 )
 
     pricing.boe_narrative = boe_mod.write_boe(ctx.router, pricing)
+
+    # Regulatory review of the finished cost volume. Runs last so it can read
+    # the BOE (an escalation factor is only "supported" if the BOE names its
+    # index) and the filled template.
+    pricing.pricing_obligations = compliance.obligations(clauses)
+    pricing.compliance_findings = compliance.check(
+        compliance.context_from_pricing(
+            pricing,
+            clauses,
+            escalation_rate=indirects.escalation_per_year,
+            is_small_business=_is_small_business(ctx),
+        )
+    )
+    for finding in pricing.compliance_findings:
+        if finding.severity == "hard":
+            ctx.console.print(f"  [red]{finding.rule}:[/red] {finding.detail}")
+        elif finding.severity == "soft":
+            ctx.console.print(f"  [yellow]{finding.rule}:[/yellow] {finding.detail}")
+        if finding.remedy:
+            pricing.human_pricing_actions.append(f"{finding.rule}: {finding.remedy}")
     return pricing
+
+
+def _is_small_business(ctx: RunContext) -> bool:
+    """Default True: the KB template is a small business and CAS/size findings
+    are advisory either way. Only a positive 'not small' finding flips it."""
+    naics = ctx.state.notice.metadata.naics_code if ctx.state.notice else None
+    profile = ctx.kb.profile
+    small = sba_size_standards.is_small(
+        naics or "", profile.annual_receipts_avg, profile.employee_count
+    )
+    return small is not False
 
 
 def _attachment_path(state: ProposalState, name: str) -> Optional[Path]:

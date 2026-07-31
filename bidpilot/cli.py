@@ -457,6 +457,7 @@ def _reprice(args) -> int:
     pricing/pricing_model.json (the `estimate` block); this recomputes every
     downstream number deterministically — no LLM calls."""
     from .assembly import write_stage_artifacts
+    from .pricing import compliance
     from .pricing import rates as rates_mod
     from .pricing.models import PricingModel
 
@@ -484,21 +485,42 @@ def _reprice(args) -> int:
             for line in pricing.priced_lines
             if line.wd_floor is not None and line.year == 0
         ])
+    # The pricing clauses found during the run are persisted as obligations
+    # ("FAR 52.222-43: ..."); recover them so a reprice keeps honoring the same
+    # regulatory constraints instead of quietly reverting to plain escalation.
+    clauses = [line.split(":", 1)[0].strip() for line in pricing.pricing_obligations]
+    sca_price_adjustment = any(
+        c in clause for clause in clauses for c in ("52.222-43", "52.222-44")
+    )
     priced, violations, unresolved = rates_mod.price_estimate(
-        pricing.estimate, kb.direct_rates(), indirects, wd, option_years=option_years
+        pricing.estimate,
+        kb.direct_rates(),
+        indirects,
+        wd,
+        option_years=option_years,
+        sca_price_adjustment=sca_price_adjustment,
     )
     pricing.priced_lines = priced
     pricing.total = rates_mod.total_of(priced)
     pricing.wd_violations = violations
     pricing.sensitivity = rates_mod.sensitivity(priced)
+    pricing.compliance_findings = compliance.check(
+        compliance.context_from_pricing(
+            pricing, clauses, escalation_rate=indirects.escalation_per_year
+        )
+    )
+    hard = [f for f in pricing.compliance_findings if f.severity == "hard"]
     state.pricing = pricing
     write_stage_artifacts(state)
     ctx.checkpoints.save(state)
     ctx.audit.record("reprice", actor="operator", detail={"total": pricing.total})
     console.print(f"Repriced deterministically: total ${pricing.total:,.2f} "
-                  f"({len(violations)} WD violations, {len(unresolved)} unresolved categories). "
+                  f"({len(violations)} WD violations, {len(hard)} hard compliance findings, "
+                  f"{len(unresolved)} unresolved categories). "
                   "BOE narrative NOT regenerated — re-run the pipeline QA stage if line rationale changed.")
-    return 0 if not violations else 3
+    for finding in hard:
+        console.print(f"  [red]{finding.rule}:[/red] {finding.detail}")
+    return 0 if not (violations or hard) else 3
 
 
 def _costs(args) -> int:

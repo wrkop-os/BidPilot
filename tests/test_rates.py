@@ -88,6 +88,61 @@ def test_unresolved_labor_category_flagged():
     assert unresolved == ["Quantum Consultant"]
 
 
+def _mixed_estimate():
+    """One SCA-covered category and one exempt professional category."""
+    return LaborEstimate(lines=[
+        _line(category="Help Desk Technician", hours=100),
+        _line(category="Software Engineer", hours=100),
+    ])
+
+
+_MIXED_WD = WageDetermination(entries=[WageDeterminationEntry(
+    labor_category="Help Desk Technician", minimum_wage=22.50, health_welfare=4.98,
+)])
+_MIXED_RATES = {"Help Desk Technician": 30.00, "Software Engineer": 58.00}
+
+
+def test_sca_covered_categories_hold_flat_under_52_222_43():
+    """FAR 52.222-43(b) warrants the price carries no contingency for SCA wage
+    increases — the clause itself is the adjustment mechanism, so escalating a
+    WD-covered category breaches the warranty the offeror just signed."""
+    priced, violations, _ = price_estimate(
+        _mixed_estimate(), _MIXED_RATES, RATES,
+        wage_determination=_MIXED_WD, option_years=2,
+        sca_price_adjustment=True,
+    )
+    sca = [p for p in priced if p.labor_category == "Help Desk Technician"]
+    exempt = [p for p in priced if p.labor_category == "Software Engineer"]
+
+    assert {p.direct_rate for p in sca} == {30.00}          # flat across all years
+    assert len({p.direct_rate for p in exempt}) == 3        # professional staff escalate
+    assert exempt[2].direct_rate > exempt[0].direct_rate
+    assert violations == []                                  # still above the floor
+
+
+def test_sca_categories_escalate_when_the_clause_is_absent():
+    """No 52.222-43/-44 means no adjustment mechanism, so escalation is the
+    only way to cover future wage increases — and is expected."""
+    priced, _, _ = price_estimate(
+        _mixed_estimate(), _MIXED_RATES, RATES,
+        wage_determination=_MIXED_WD, option_years=2,
+    )
+    sca = [p for p in priced if p.labor_category == "Help Desk Technician"]
+    assert len({p.direct_rate for p in sca}) == 3
+
+
+def test_sca_flat_pricing_still_enforces_the_wd_floor():
+    """Holding flat must never become a way to sneak under the floor."""
+    priced, violations, _ = price_estimate(
+        LaborEstimate(lines=[_line(category="Help Desk Technician", hours=10)]),
+        {"Help Desk Technician": 24.00}, RATES,
+        wage_determination=_MIXED_WD, option_years=1,
+        sca_price_adjustment=True,
+    )
+    assert len(violations) == 2                     # one per year, both below 27.48
+    assert all(p.wd_compliant is False for p in priced)
+
+
 def test_sensitivity_points():
     estimate = LaborEstimate(lines=[_line(hours=100)])
     priced, _, _ = price_estimate(estimate, {"Software Engineer": 58.0}, RATES)

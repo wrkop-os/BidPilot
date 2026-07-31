@@ -34,6 +34,7 @@ gracefully without it.
 | Doc parsing ladder, OCR, retrieval index | `bidpilot/docproc/` (`index.py` = BM25-style retrieval; pgvector goes behind this interface) |
 | Agents (one module per PRD roster entry) | `bidpilot/agents/` |
 | Deterministic pricing (wrap rates, WD floors) | `bidpilot/pricing/rates.py` — pure code, never LLM |
+| FAR compliance checks on the cost volume | `bidpilot/pricing/compliance.py` — read `docs/PRICING_COMPLIANCE.md` before changing a threshold or severity |
 | Fail-closed QA checks | `bidpilot/qa_checks.py` + `agents/qa.py` (LLM half) |
 | Rendering + exact page counts | `bidpilot/rendering.py` |
 | Reviewer edit loop | `bidpilot/drafts.py` (`sync-drafts`, clobber protection) |
@@ -69,6 +70,12 @@ gracefully without it.
   stages record a `stage=` label — telemetry groups on the prefix before `.`.
 - Deterministic logic gets unit tests; agent flows get fake-router e2e tests
   (see `tests/test_orchestrator_e2e.py` — extend `FakeRouter` by schema name).
+- Regulatory applicability comes from the literal presence of a clause in the
+  solicitation, never from contract value. Agencies delete and renumber FAR
+  Part 15/22 provisions under Revolutionary FAR Overhaul class deviations, so
+  a dollar threshold may only *explain an absence* — it may never manufacture
+  a requirement. Dollar constants carry a cite and an `AS_OF`, and never
+  hard-fail.
 - Commit messages: plain ASCII quotes (shell-quote with single quotes).
 - New failure discovered live → corpus item + test before the fix (PRD rule).
 - `.claude/skills/` is a vendored snapshot of the ECC skill library

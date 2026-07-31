@@ -95,6 +95,21 @@ class SensitivityPoint(BaseModel):
     total: float
 
 
+class ComplianceFinding(BaseModel):
+    """A regulatory finding against the cost volume (bidpilot/pricing/compliance.py).
+
+    `hard` blocks export, `soft` is a reviewer to-do, `info` is context the
+    pricer should read before signing. Every finding names the FAR cite it
+    rests on so a reviewer can check the system's reasoning against the book.
+    """
+
+    severity: str = Field(description="hard | soft | info")
+    rule: str = Field(description="FAR/statutory cite the finding rests on")
+    detail: str
+    remedy: str = ""
+    location: Optional[str] = None
+
+
 class CellWrite(BaseModel):
     """One proposed write into the government's own XLSX pricing template."""
 
@@ -127,3 +142,11 @@ class PricingModel(BaseModel):
     quote_needed: list[str] = Field(default_factory=list)
     human_pricing_actions: list[str] = Field(default_factory=list)
     template_fill: Optional[TemplateFillProposal] = None
+    compliance_findings: list[ComplianceFinding] = Field(
+        default_factory=list,
+        description="Regulatory findings on the cost volume — see pricing/compliance.py",
+    )
+    pricing_obligations: list[str] = Field(
+        default_factory=list,
+        description="Plain-language duties triggered by the pricing clauses actually present",
+    )

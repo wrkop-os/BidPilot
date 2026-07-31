@@ -74,11 +74,26 @@ def price_estimate(
     indirects: IndirectRateStructure,
     wage_determination: Optional[WageDetermination] = None,
     option_years: int = 0,
+    sca_price_adjustment: bool = False,
 ) -> tuple[list[PricedLine], list[WDViolation], list[str]]:
     """Deterministically price every labor line across base + option years.
 
     Returns (priced lines, WD violations, unresolved labor categories).
     WD compliance is checked against the ESCALATED direct rate for each year.
+
+    `sca_price_adjustment` says the solicitation carries FAR 52.222-43 or
+    52.222-44. Paragraph (b) of 52.222-43 is an express *warranty* that the
+    price contains no contingency covering SCA wage increases — the clause
+    itself is the adjustment mechanism, claimed against each new wage
+    determination. So when it applies, wage-determination-covered categories
+    are held flat at the current WD across option years and only uncovered
+    (professional/exempt) categories escalate. Escalating a covered category
+    would price in exactly the contingency the offeror warranted away.
+
+    Indirect rates are unchanged either way: the warranty is about SCA wage and
+    fringe increases, and the clause's own adjustment is likewise limited to
+    wages, fringe, and the accompanying social security, unemployment tax, and
+    workers' compensation — no overhead, G&A, or profit.
     """
     priced: list[PricedLine] = []
     violations: list[WDViolation] = []
@@ -92,8 +107,9 @@ def price_estimate(
                 unresolved.append(line.labor_category)
             continue
         wd_entry = wage_determination.floor_for(line.labor_category) if wage_determination else None
+        sca_flat = sca_price_adjustment and wd_entry is not None
         for year in range(option_years + 1):
-            year_direct = escalate(direct, indirects, year)
+            year_direct = direct if sca_flat else escalate(direct, indirects, year)
             wrapped = wrap_rate(year_direct, indirects)
             wd_floor = wd_entry.floor if wd_entry else None
             wd_ok = None

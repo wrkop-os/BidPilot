@@ -30,6 +30,7 @@ DETERMINISTIC_PATHS = {
     "requirement coverage": "bidpilot/qa_checks.py:coverage_check",
     "citation enforcement": "bidpilot/qa_checks.py:citation_check",
     "requirement dedup/IDs": "bidpilot/agents/shredder.py:dedup_requirements",
+    "pricing regulatory checks": "bidpilot/pricing/compliance.py:check",
 }
 
 

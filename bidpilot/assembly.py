@@ -14,6 +14,7 @@ from .agents.forms import forms_to_markdown
 from .agents.shredder import matrix_to_csv
 from .agents.submission import build_ics, sheet_to_markdown
 from .audit import AuditLog
+from .pricing.compliance import compliance_markdown
 
 
 def _write(path: Path, content: str) -> None:
@@ -72,6 +73,12 @@ def write_stage_artifacts(state) -> list[str]:
         _write(out / "pricing" / "priced_lines.csv", priced_lines_csv(state.pricing))
         if state.pricing.boe_narrative:
             _write(out / "pricing" / "basis_of_estimate.md", state.pricing.boe_narrative)
+        _write(
+            out / "pricing" / "REGULATORY_COMPLIANCE.md",
+            compliance_markdown(
+                state.pricing.compliance_findings, state.pricing.pricing_obligations
+            ),
+        )
         template = state.pricing.structure.government_template_file if state.pricing.structure else None
         if template:
             source = _find_attachment(state, template)
@@ -256,6 +263,10 @@ def review_checklist(state) -> str:
         lines += [f"- [ ] {a}" for a in state.pricing.human_pricing_actions]
         lines += [f"- [ ] Obtain quote: {q}" for q in state.pricing.quote_needed]
         lines += [f"- [ ] 🛑 RESOLVE WD VIOLATION: {v.detail}" for v in state.pricing.wd_violations]
+        lines += [
+            f"- [ ] 🛑 RESOLVE {f.rule}: {f.detail}"
+            for f in state.pricing.compliance_findings if f.severity == "hard"
+        ]
     if state.forms:
         lines.append("")
         lines.append("## Forms & certifications (human-only)")
