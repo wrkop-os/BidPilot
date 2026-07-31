@@ -31,6 +31,7 @@ gracefully without it.
 | Graph orchestrator, gates, halt/resume semantics | `bidpilot/orchestrator.py` — read `run()`'s docstring before touching resume logic |
 | Model routing + audit of every LLM call | `bidpilot/routing.py` (FAST=haiku for volume, FRONTIER=opus for judgment), `bidpilot/audit.py` |
 | SAM.gov intake + amendment chain | `bidpilot/intake/` |
+| Offline intake (folder of documents, no API) | `bidpilot/intake/local.py` — `run --local DIR`; metadata is extracted deterministically or reported missing, never guessed |
 | Doc parsing ladder, OCR, retrieval index | `bidpilot/docproc/` (`index.py` = BM25-style retrieval; pgvector goes behind this interface) |
 | Agents (one module per PRD roster entry) | `bidpilot/agents/` |
 | Deterministic pricing (wrap rates, WD floors) | `bidpilot/pricing/rates.py` — pure code, never LLM |

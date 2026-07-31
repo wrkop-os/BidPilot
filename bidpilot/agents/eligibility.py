@@ -74,6 +74,16 @@ def check_eligibility(
         status = sam.entity_status(profile.uei)
         if status:
             entity_evidence = f"Entity API result for UEI {profile.uei}: {status}"
+        else:
+            # NOT verified is different from verified-and-clean. Say which,
+            # so the reviewer knows this check still has to happen by hand.
+            reason = getattr(sam, "last_entity_error", None)
+            entity_evidence = (
+                f"Entity API NOT verified for UEI {profile.uei}"
+                + (f" — {reason}" if reason else "")
+                + ". Registration status and exclusions are UNCONFIRMED; "
+                "check SAM.gov manually before submitting."
+            )
 
     clause_evidence = "\n".join(
         f"- {h.clause}: {h.meaning} :: …{h.snippet}…" for h in clause_hits

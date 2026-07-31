@@ -26,7 +26,7 @@ from rich.console import Console
 
 from .kb.store import load_kb
 from .orchestrator import invalidate_for_amendment, make_context, run
-from .routing import RefusalError
+from .routing import MissingCredentialsError, RefusalError
 from .state import Stage
 
 console = Console()
@@ -43,7 +43,14 @@ def main(argv: list[str] | None = None) -> int:
 
     for name, desc in (("run", "Full pipeline"), ("analyze", "Analyst MVP (stop after eligibility/matrix/submission)")):
         p = sub.add_parser(name, help=desc)
-        p.add_argument("url", help="SAM.gov opportunity URL or 32-hex notice ID")
+        p.add_argument("url", nargs="?", default=None,
+                       help="SAM.gov opportunity URL or 32-hex notice ID "
+                            "(omit when using --local)")
+        p.add_argument("--local", default=None, metavar="DIR",
+                       help="Run from a folder of solicitation documents instead of "
+                            "the SAM.gov API — for restricted networks, spent rate "
+                            "limits, login-gated attachments, or packages that were "
+                            "never on SAM.gov. Optional notice.yaml supplies metadata.")
         p.add_argument("--kb", default=None, help="Knowledge base directory (default: ./kb)")
         p.add_argument("--out", default="runs", help="Output root for run directories")
         p.add_argument("--yes", action="store_true", help="Auto-approve gates (still never submits)")
@@ -344,11 +351,19 @@ def _confirm_factory(args):
 
 def _run(args, analyst_only: bool) -> int:
     kb = _load_kb_or_fail(args.kb)
+    local = getattr(args, "local", None)
+    if not local and not args.url:
+        console.print("[red]Provide a SAM.gov URL/notice ID, or --local DIR "
+                      "to run from a folder of solicitation documents.[/red]")
+        return 1
+    if local and not Path(local).is_dir():
+        console.print(f"[red]--local {local} is not a directory.[/red]")
+        return 1
     try:
         ctx = make_context(
-            args.url, kb, Path(args.out),
+            args.url or f"local:{local}", kb, Path(args.out),
             effort=args.effort, confirm=_confirm_factory(args), console=console,
-            actor=args.actor,
+            actor=args.actor, local_source=Path(local) if local else None,
         )
     except ValueError as exc:
         console.print(f"[red]{exc}[/red]")
@@ -374,6 +389,9 @@ def _run(args, analyst_only: bool) -> int:
         except RefusalError as exc:
             console.print(f"[red]{exc}[/red]")
             return 2
+        except MissingCredentialsError as exc:
+            console.print(f"[red]{exc}[/red]")
+            return 1
         console.print(f"\nAnalyst artifacts in [bold]{ctx.state.run_dir}[/bold]: "
                       "ELIGIBILITY_REPORT.md, compliance_matrix.csv, SUBMISSION_INSTRUCTIONS.md")
         return 0 if ctx.state.halted_reason in (None, "gate_declined:bid_no_bid") else 3
@@ -383,6 +401,9 @@ def _run(args, analyst_only: bool) -> int:
     except RefusalError as exc:
         console.print(f"[red]{exc}[/red]")
         return 2
+    except MissingCredentialsError as exc:
+        console.print(f"[red]{exc}[/red]")
+        return 1
     if state.halted_reason and state.export_path is None:
         console.print(f"[yellow]Run stopped: {state.halted_reason} (resume with the same command)[/yellow]")
         return 3

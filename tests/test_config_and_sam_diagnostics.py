@@ -118,3 +118,38 @@ def test_diagnosis_never_echoes_a_url_that_carries_the_api_key():
                 httpx.ProxyError("403 Forbidden"), httpx.ConnectError("boom")):
         assert "SEKRIT" not in diagnose_api_failure(exc)
         assert "api_key=" not in diagnose_api_failure(exc)
+
+
+# -- model credentials --------------------------------------------------------
+
+
+def test_missing_credentials_is_actionable_not_a_sdk_typeerror(monkeypatch):
+    """The SDK raises a TypeError about header resolution, mid-run, after
+    intake and docproc have already done real work. That is not a message
+    anyone can act on."""
+    from bidpilot.routing import MissingCredentialsError, ModelRouter
+
+    for var in ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "BIDPILOT_CUSTOM_LLM_URL"):
+        monkeypatch.delenv(var, raising=False)
+
+    with pytest.raises(MissingCredentialsError) as exc:
+        _ = ModelRouter().client
+    message = str(exc.value)
+    assert "ANTHROPIC_API_KEY" in message
+    assert "BIDPILOT_CUSTOM_LLM_URL" in message      # the no-Anthropic-key route
+    assert "doctor" in message
+
+
+def test_a_custom_backend_alone_needs_no_anthropic_key(monkeypatch):
+    """Custom-only deployments must not be blocked by a missing Anthropic key —
+    the client is built lazily and never reached."""
+    from bidpilot.routing import ModelRouter, Tier
+
+    for var in ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv("BIDPILOT_CUSTOM_LLM_URL", "http://localhost:9999/v1")
+    monkeypatch.setenv("BIDPILOT_CUSTOM_LLM_TIERS", "all")
+
+    router = ModelRouter()
+    assert router.custom is not None
+    assert router.model_for(Tier.FRONTIER).startswith("custom:")

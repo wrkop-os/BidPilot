@@ -37,6 +37,7 @@ from .data import sba_size_standards
 from .data.clause_patterns import scan_clauses
 from .docproc import process_attachments
 from .docproc import ocr as ocr_mod
+from .intake import local as local_intake
 from .intake import (
     SamGovClient,
     parse_notice_id,
@@ -73,6 +74,8 @@ class RunContext:
     console: Console
     confirm: ConfirmFn
     actor: str = "operator"
+    # Set when intake reads a local document folder instead of SAM.gov.
+    local_source: Optional[Path] = None
 
 
 @dataclass
@@ -82,8 +85,13 @@ class Node:
     gate_after: Optional[str] = None
 
 
-def new_run(url_or_id: str, output_root: Path) -> tuple[ProposalState, CheckpointStore]:
-    notice_id = parse_notice_id(url_or_id)
+def new_run(url_or_id: str, output_root: Path,
+            local_source: Optional[Path] = None) -> tuple[ProposalState, CheckpointStore]:
+    # A local package has no notice ID, so the run key is derived from the
+    # documents' content: same folder resumes the same run, a new amendment
+    # document starts a new one.
+    notice_id = (local_intake.local_run_key(local_source) if local_source
+                 else parse_notice_id(url_or_id))
     run_id = f"{notice_id[:8]}-{uuid.uuid4().hex[:8]}"
     run_dir = output_root / notice_id
     checkpoints = CheckpointStore(run_dir)
@@ -252,6 +260,24 @@ def _record_gate(ctx: RunContext, gate: str, approved: bool, notes: Optional[str
 
 def _intake(ctx: RunContext) -> None:
     dest = Path(ctx.state.run_dir) / "attachments"
+    if ctx.local_source is not None:
+        # Local document package: no SAM.gov call at all. Everything downstream
+        # consumes a NoticePackage and never learns where it came from.
+        ctx.state.notice = local_intake.load_local_package(ctx.local_source, dest)
+        notice = ctx.state.notice
+        ctx.console.print(f"  local package: {ctx.local_source}")
+        ctx.console.print(f"  {notice.metadata.title or '(untitled)'}")
+        ctx.console.print(f"  documents: {len(notice.files)}")
+        gaps = local_intake.missing_metadata(notice.metadata)
+        for gap in gaps:
+            ctx.console.print(f"  [yellow]{gap}[/yellow]")
+        if gaps:
+            ctx.console.print(
+                "  [yellow]Local intake never guesses metadata. There is no "
+                "amendment chain to check either — confirm you have the latest "
+                "version before you bid.[/yellow]"
+            )
+        return
     ctx.state.notice = run_intake(ctx.sam, ctx.state.input_url, dest)
     notice = ctx.state.notice
     ctx.console.print(f"  {notice.metadata.title or '(no metadata — set SAM_GOV_API_KEY)'}")
@@ -708,11 +734,14 @@ def make_context(
     confirm: Optional[ConfirmFn] = None,
     console: Optional[Console] = None,
     actor: str = "operator",
+    local_source: Optional[Path] = None,
 ) -> RunContext:
-    state, checkpoints = new_run(url_or_id, output_root)
+    local_source = Path(local_source) if local_source else None
+    state, checkpoints = new_run(url_or_id, output_root, local_source)
     run_dir = Path(state.run_dir)
     audit = AuditLog(run_dir / "audit.jsonl")
     return RunContext(
+        local_source=local_source,
         state=state,
         router=ModelRouter(audit=audit, effort=effort),
         sam=SamGovClient(cache_dir=run_dir / "api_cache"),

@@ -50,6 +50,10 @@ class RefusalError(RuntimeError):
     """Model safety classifiers declined the request."""
 
 
+class MissingCredentialsError(RuntimeError):
+    """No usable model backend is configured — actionable, not a stack trace."""
+
+
 class CustomLLMBackend:
     """OpenAI-compatible chat-completions client for self-hosted or
     fine-tuned models. Structured output is enforced by schema-in-prompt +
@@ -150,6 +154,19 @@ class ModelRouter:
         if self._client is None:
             import anthropic
 
+            # The SDK's own error for this is a TypeError about header
+            # resolution, raised mid-run after intake and docproc have already
+            # done real work. Fail with something a human can act on instead.
+            if not (os.environ.get("ANTHROPIC_API_KEY")
+                    or os.environ.get("ANTHROPIC_AUTH_TOKEN")):
+                raise MissingCredentialsError(
+                    "No Anthropic credentials. Set ANTHROPIC_API_KEY in .env "
+                    "(or export ANTHROPIC_AUTH_TOKEN, or run `ant auth login`).\n"
+                    "To run entirely against your own model instead, set "
+                    "BIDPILOT_CUSTOM_LLM_URL (and optionally _MODEL, _API_KEY, "
+                    "_TIERS) — no Anthropic key is needed then.\n"
+                    "`bidpilot doctor` checks both."
+                )
             self._client = anthropic.Anthropic()
         return self._client
 

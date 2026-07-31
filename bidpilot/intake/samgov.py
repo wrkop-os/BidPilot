@@ -260,8 +260,17 @@ class SamGovClient:
     # -- entity management (FR-6) ---------------------------------------------
 
     def entity_status(self, uei: str) -> Optional[dict]:
-        """Registration + exclusion status for the company's own UEI."""
+        """Registration + exclusion status for the company's own UEI.
+
+        Never raises: an unreachable entity check must not sink a run. But it
+        must not vanish silently either — a bidder who thinks their SAM
+        registration was verified when it was not has a false sense of
+        security, so the reason is recorded on `last_entity_error` for callers
+        to surface.
+        """
+        self.last_entity_error: Optional[str] = None
         if not self.api_key:
+            self.last_entity_error = "SAM_GOV_API_KEY not set"
             return None
         try:
             resp = self._get(ENTITY_API, params={"api_key": self.api_key, "ueiSAM": uei})
@@ -277,7 +286,8 @@ class SamGovClient:
                 "exclusion_status": reg.get("exclusionStatusFlag"),
                 "expiration_date": reg.get("registrationExpirationDate"),
             }
-        except Exception:
+        except Exception as exc:  # noqa: BLE001 — degrade, but say why
+            self.last_entity_error = diagnose_api_failure(exc)
             return None
 
     # -- internals -------------------------------------------------------------

@@ -109,6 +109,46 @@ $EDITOR kb/profile.yaml kb/past_performance.yaml kb/personnel.yaml
 bidpilot interview                 # onboarding agent: what the KB is still missing
 ```
 
+### Running without the SAM.gov API
+
+The API is the happy path, not a hard dependency. Point BidPilot at a folder of
+solicitation documents instead:
+
+```bash
+bidpilot run --local ./RFQ_Service_Desk --kb kb.pro
+```
+
+Use it when the API is not available to you: an egress policy that blocks
+`api.sam.gov` (common on contractor networks, and a security posture rather
+than something to route around), a spent daily rate limit, login-gated
+attachments the API lists but cannot fetch, or a package that was never on
+SAM.gov at all — a teaming partner's RFP, an agency-emailed draft, a state or
+commercial solicitation.
+
+Metadata resolves in strict precedence: an optional `notice.yaml` in the folder,
+then deterministic extraction from the documents (solicitation number, NAICS,
+PSC, set-aside, deadline — regex, never an LLM), then nothing. Unresolved
+fields are reported as human actions rather than guessed, ordered by
+consequence:
+
+```yaml
+# RFQ_Service_Desk/notice.yaml — every field optional
+title: Enterprise Service Desk Support Services
+agency: General Services Administration, FAS
+naics_code: "541519"
+response_deadline: "March 14, 2027 at 2:00 PM ET"
+```
+
+An unrecognized field is an error, not a silent no-op — dropping `naics:`
+because the field is `naics_code:` would screen the bid against the wrong size
+standard.
+
+The run key is derived from document content, so re-running the same folder
+resumes the same run and adding an amendment document starts a new one. Two
+caveats the CLI prints every time: local intake has **no amendment chain** to
+check, so confirm you have the latest version yourself; and it never invents
+metadata.
+
 `doctor --network` distinguishes the three ways a SAM.gov call fails — a
 rejected key, a spent rate limit, and a blocked network path — because they
 look identical in a stack trace and need completely different fixes. Note that

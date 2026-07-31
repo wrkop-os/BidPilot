@@ -372,3 +372,86 @@ def test_export_blocked_on_hard_qa_failure(tmp_path):
     assert state.halted_reason == "qa_hard_failures"
     assert state.export_path is None
     assert any(f.category == "fabrication" for f in state.qa_report.hard_failures())
+
+
+class _ExplodingSam:
+    """Fails any Opportunities API call — the ones local intake replaces.
+
+    `entity_status` is deliberately still allowed: it checks the *company's
+    own* SAM registration, which is orthogonal to how the solicitation
+    arrived, and the real client already degrades to None when it cannot be
+    reached. Forbidding it here would test a contract the product does not
+    actually want.
+    """
+
+    FORBIDDEN = ("notice_metadata", "search_by_solicitation_number",
+                 "download_attachments", "search_raw")
+
+    def entity_status(self, uei):
+        return None                      # what the real client does when blocked
+
+    def __getattr__(self, name):
+        def _call(*args, **kwargs):
+            if name in self.FORBIDDEN:
+                raise AssertionError(
+                    f"local intake must never call the Opportunities API ({name})"
+                )
+            return None
+        return _call
+
+
+def test_full_pipeline_runs_from_a_local_document_folder(tmp_path):
+    """The whole graph, end to end, with the SAM.gov API unreachable.
+
+    This is the path that keeps the product usable behind an egress policy that
+    blocks api.sam.gov — a common condition in government contracting, and a
+    security posture rather than a bug to route around.
+    """
+    src = tmp_path / "RFP_Package"
+    src.mkdir()
+    (src / "solicitation.txt").write_text(
+        "Solicitation Number: W9123-26-R-0001\n"
+        "NAICS Code: 541511\n"
+        "Offers due: August 15, 2026 at 1:00 PM ET\n"
+        "This is a Total Small Business Set-Aside.\n\n" + DESCRIPTION
+    )
+    (src / "notice.yaml").write_text("agency: Department of Defense\n")
+
+    state, checkpoints = new_run("local:pkg", tmp_path / "runs", local_source=src)
+    ctx = RunContext(
+        state=state,
+        router=FakeRouter(),
+        sam=_ExplodingSam(),
+        kb=load_kb(str(EXAMPLE_KB)),
+        checkpoints=checkpoints,
+        audit=AuditLog(Path(state.run_dir) / "audit.jsonl"),
+        console=Console(quiet=True),
+        confirm=lambda q: True,
+        actor="test",
+        local_source=src,
+    )
+    state = run(ctx)
+
+    assert state.halted_reason is None
+    assert all(state.is_done(s) for s in Stage)
+
+    # Intake produced a real package from the folder.
+    assert state.notice.metadata.solicitation_number == "W9123-26-R-0001"
+    assert state.notice.metadata.naics_code == "541511"
+    assert state.notice.metadata.agency == "Department of Defense"
+    assert [f.name for f in state.notice.files] == ["solicitation.txt"]
+
+    # And the package still exports, with the same guarantees as an API run.
+    assert state.export_path and Path(state.export_path).exists()
+
+
+def test_local_run_resumes_the_same_run_directory(tmp_path):
+    """Re-running the same folder must continue, not fork a second run."""
+    src = tmp_path / "pkg"
+    src.mkdir()
+    (src / "sol.txt").write_text("Solicitation Number: ABC-123456\n")
+
+    first, _ = new_run("local:pkg", tmp_path / "runs", local_source=src)
+    second, _ = new_run("local:pkg", tmp_path / "runs", local_source=src)
+    assert first.run_dir == second.run_dir
+    assert second.run_id == first.run_id        # loaded the existing checkpoint
