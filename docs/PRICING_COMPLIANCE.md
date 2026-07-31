@@ -70,10 +70,56 @@ uncovered (professional/exempt) categories. The flag is set from the clause
 scan, not from a guess. Escalating a covered category is the single hard
 finding in this module (`FAR 52.222-43(b)`), and it blocks export.
 
-**What it means for your margin** (*inference*): because the adjustment
-carries no OH/G&A/profit, your indirect recovery on SCA labor erodes over a
-five-year period of performance. That is the intended design of the clause, not
-a modeling error — plan for it in fee, not in the base rate.
+**What it means for your margin.** Because the adjustment carries no
+OH/G&A/profit, indirect recovery on SCA labor erodes over a five-year period of
+performance. That is the intended design of the clause, not a modeling error —
+and it is now computed rather than described. See the next section.
+
+## SCA margin erosion — the cost of complying
+
+`bidpilot/pricing/sca_erosion.py`. Every run with 52.222-43/-44 and option
+years writes a projection into `pricing/REGULATORY_COMPLIANCE.md`.
+
+The arithmetic, per covered category per option year:
+
+```
+wage_delta   = base_direct_rate x ((1 + wd_growth)^year - 1)
+recoverable  = wage_delta x (1 + statutory_burden)     # 52.222-43(d), all of it
+fully_loaded = wrap_rate(wage_delta)                   # what it actually costs you
+unrecovered  = fully_loaded - recoverable              # the OH, G&A and fee you eat
+```
+
+**Two assumptions, both stated in the output:**
+
+`wd_growth` — the assumed annual wage-determination increase. Nobody can know
+it. It defaults to the company's own escalation factor, so the projection stays
+internally consistent with the rest of the cost volume instead of importing a
+second opinion. Override it if you have better information.
+
+`statutory_burden` — defaults to **8.25%**: FICA 7.65% (26 U.S.C. 3111) plus
+FUTA 0.6% effective. State unemployment and workers' compensation are also
+recoverable under 52.222-43(d) but vary by state and class code (WC spans well
+under 1% for clerical to double digits for hazardous trades), so they are
+excluded. **The bias runs one way:** excluding them understates recovery, which
+overstates erosion. This default is the conservative end — supplying your real
+rates can only shrink the number. A test pins that direction.
+
+**Magnitude.** On a representative $5.56M five-year SCA services contract
+(7 SCA FTE, 1 exempt PM, 8% target fee, 3% assumed WD growth), the projection
+is **$108,406 unrecovered — 1.95% of contract value, about a quarter of the
+total fee**, and it compounds: $10.5K in option year 1, $44.0K in option year 4.
+
+**It is reported as `info`, never `hard`.** Nothing is wrong. The clause is
+working as written. What it forces is a fee-posture decision that belongs to a
+human, and the memo lays out the three real options without picking one:
+absorb it, price it into base-year fee (legitimate — the 52.222-43(b) warranty
+covers a contingency for *SCA wage increases*, not your target profit rate, but
+document the reasoning in the BOE so it reads as a fee decision and not a
+hidden escalation contingency), or shift hours toward exempt categories.
+
+Whichever you choose: **claim every adjustment.** It is bilateral and has a
+30-day window from each new wage determination. An unclaimed adjustment moves
+the whole recoverable column into unrecovered cost.
 
 ### FAR 52.222-46 — compensation of professional employees
 

@@ -50,6 +50,7 @@ from .pricing import boe as boe_mod
 from .pricing import compliance
 from .pricing import estimator as estimator_mod
 from .pricing import rates as rates_mod
+from .pricing import sca_erosion
 from .pricing import structure as structure_mod
 from .pricing import workbook as workbook_mod
 from .pricing.models import PricingModel
@@ -486,6 +487,14 @@ def _price(ctx: RunContext) -> PricingModel:
                 )
 
     pricing.boe_narrative = boe_mod.write_boe(ctx.router, pricing)
+
+    # Holding SCA categories flat is required, but it is not free: the
+    # 52.222-43 adjustment restores no OH/G&A/profit. Size that gap so the
+    # fee decision is made against a number instead of an adjective.
+    if sca_price_adjustment:
+        pricing.sca_erosion = sca_erosion.project_erosion(
+            pricing.priced_lines, indirects, total_price=pricing.total
+        )
 
     # Regulatory review of the finished cost volume. Runs last so it can read
     # the BOE (an escalation factor is only "supported" if the BOE names its

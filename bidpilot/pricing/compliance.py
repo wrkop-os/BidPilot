@@ -101,6 +101,7 @@ class PricingContext:
     escalation_basis: Optional[str] = None    # citable index, e.g. "BLS ECI"
     has_compensation_plan: bool = False
     discloses_uncompensated_overtime: Optional[bool] = None
+    erosion: Optional[object] = None   # SCAErosion, when one was projected
     cost_texts: list[str] = field(default_factory=list)   # ODC/indirect descriptions to screen
     is_small_business: bool = True
     contract_type: Optional[str] = None                   # ffp | tm | cpff | ...
@@ -119,7 +120,48 @@ def check(ctx: PricingContext) -> list[ComplianceFinding]:
     findings += _unallowable_costs(ctx)
     findings += _accounting_system(ctx)
     findings += _cost_accounting_standards(ctx)
+    findings += _sca_margin_erosion(ctx)
     return findings
+
+
+def _sca_margin_erosion(ctx: PricingContext) -> list[ComplianceFinding]:
+    """The cost of complying with 52.222-43, stated as a number.
+
+    Not a defect and not a violation — the clause working as designed. It is
+    reported because it is a fee-posture decision a human has to make, and
+    nobody can make it from the adjective 'erodes'."""
+    erosion = ctx.erosion
+    if erosion is None or not getattr(erosion, "total_unrecovered", 0):
+        return []
+    sized = f"${erosion.total_unrecovered:,.0f} of overhead, G&A and fee"
+    if erosion.margin_points is not None:
+        sized += f" ({erosion.margin_points:.2%} of the proposed total price)"
+    uplift = (
+        f" Offsetting it entirely would take roughly {erosion.fee_uplift_needed:.2%} "
+        "of additional fee across the whole job."
+        if erosion.fee_uplift_needed is not None else ""
+    )
+    return [ComplianceFinding(
+        severity="info",
+        rule="FAR 52.222-43(d)",
+        detail=(
+            f"Projected {sized} goes unrecovered on SCA labor across "
+            f"{len(erosion.years)} option year(s), because the price adjustment "
+            "restores the wage delta plus statutory burden and nothing else. "
+            f"Assumes wage determinations rise {erosion.assumed_wd_growth:.2%}/yr."
+            + uplift
+        ),
+        remedy=(
+            "Decide the fee posture deliberately: absorb it, price it into "
+            "base-year fee (permitted — the 52.222-43(b) warranty covers a "
+            "contingency for SCA wage increases, not your target profit rate, "
+            "but document the reasoning in the BOE), or shift hours toward "
+            "exempt categories that escalate normally. Then claim every "
+            "adjustment within 30 days of each new wage determination — the "
+            "adjustment is bilateral, and an unclaimed one widens this gap."
+        ),
+        location="option-year margin",
+    )]
 
 
 def _cost_accounting_standards(ctx: PricingContext) -> list[ComplianceFinding]:
@@ -379,6 +421,7 @@ def context_from_pricing(
     is_small_business: bool = True,
     has_compensation_plan: bool = False,
     discloses_uncompensated_overtime: Optional[bool] = None,
+    erosion: Optional[object] = None,
 ) -> PricingContext:
     """Derive the check inputs from the priced model — no judgment, just facts
     already computed by the rate engine."""
@@ -420,6 +463,7 @@ def context_from_pricing(
         cost_texts=cost_texts,
         is_small_business=is_small_business,
         contract_type=contract_type,
+        erosion=erosion if erosion is not None else pricing.sca_erosion,
     )
 
 
@@ -441,7 +485,8 @@ _SEVERITY_LABEL = {
 
 
 def compliance_markdown(findings: list[ComplianceFinding],
-                        duties: list[str]) -> str:
+                        duties: list[str],
+                        erosion: Optional[object] = None) -> str:
     """The regulatory memo that ships with the cost volume."""
     lines = [
         "# Cost volume — regulatory review",
@@ -480,7 +525,7 @@ def compliance_markdown(findings: list[ComplianceFinding],
             "No findings: the cost volume is consistent with every pricing "
             "clause detected in the solicitation.",
         ]
-        return "\n".join(lines)
+        return "\n".join(lines + _erosion_section(erosion))
 
     lines += ["## Findings", ""]
     for finding in sorted(findings, key=lambda f: _SEVERITY_ORDER.get(f.severity, 3)):
@@ -493,6 +538,7 @@ def compliance_markdown(findings: list[ComplianceFinding],
         if finding.remedy:
             lines += [f"**What to do:** {finding.remedy}", ""]
 
+    lines += _erosion_section(erosion)
     lines += [
         "---",
         "",
@@ -501,3 +547,12 @@ def compliance_markdown(findings: list[ComplianceFinding],
         "say; a human owns the price.",
     ]
     return "\n".join(lines)
+
+
+def _erosion_section(erosion: Optional[object]) -> list[str]:
+    if erosion is None:
+        return []
+    from .sca_erosion import erosion_markdown
+
+    body = erosion_markdown(erosion)
+    return ["", body, ""] if body else []

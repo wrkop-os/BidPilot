@@ -94,13 +94,26 @@ ship without having verified.
 ```bash
 pip install -e ".[dev]"            # add ".[tables]" for pdfplumber table extraction
 
-export ANTHROPIC_API_KEY=sk-ant-...   # or `ant auth login`
-export SAM_GOV_API_KEY=...            # free key via your SAM.gov account
+# Keys go in .env (gitignored) so they never land in a tracked file.
+# An exported environment variable always wins over the file.
+cat > .env <<'EOF'
+ANTHROPIC_API_KEY=sk-ant-...          # or run `ant auth login` instead
+SAM_GOV_API_KEY=...                   # api.data.gov key for the Opportunities API
+EOF
+chmod 600 .env
+
+bidpilot doctor --network          # verifies the keys and the SAM.gov API contract
 
 bidpilot init-kb                   # creates ./kb from the example
 $EDITOR kb/profile.yaml kb/past_performance.yaml kb/personnel.yaml
 bidpilot interview                 # onboarding agent: what the KB is still missing
 ```
+
+`doctor --network` distinguishes the three ways a SAM.gov call fails — a
+rejected key, a spent rate limit, and a blocked network path — because they
+look identical in a stack trace and need completely different fixes. Note that
+the Opportunities API wants an **api.data.gov** key; a SAM.gov system-account
+key is a different credential and will come back 403.
 
 ## Usage
 

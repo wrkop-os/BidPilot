@@ -95,6 +95,39 @@ class SensitivityPoint(BaseModel):
     total: float
 
 
+class SCAErosionYear(BaseModel):
+    year: int
+    hours: float
+    wage_delta_per_hour: float = Field(
+        description="Assumed wage-determination increase over the base year, hours-weighted"
+    )
+    fully_loaded: float = Field(description="What that delta costs once wrapped")
+    recoverable: float = Field(description="Wage delta + statutory burden — all 52.222-43(d) allows")
+    unrecovered: float = Field(description="The OH/G&A/fee the clause does not restore")
+
+
+class SCAErosion(BaseModel):
+    """Projected margin erosion on SCA labor (bidpilot/pricing/sca_erosion.py).
+
+    Holding covered categories flat is legally required; the clause's
+    adjustment carries no overhead, G&A, or profit. This is what that costs.
+    """
+
+    assumed_wd_growth: float
+    statutory_burden_rate: float
+    statutory_burden_basis: str = ""
+    covered_categories: list[str] = Field(default_factory=list)
+    years: list[SCAErosionYear] = Field(default_factory=list)
+    total_unrecovered: float = 0.0
+    total_price: Optional[float] = None
+    margin_points: Optional[float] = Field(
+        default=None, description="Unrecovered as a fraction of proposed total price"
+    )
+    fee_uplift_needed: Optional[float] = Field(
+        default=None, description="Additional fee rate across the job that would offset it"
+    )
+
+
 class ComplianceFinding(BaseModel):
     """A regulatory finding against the cost volume (bidpilot/pricing/compliance.py).
 
@@ -149,4 +182,8 @@ class PricingModel(BaseModel):
     pricing_obligations: list[str] = Field(
         default_factory=list,
         description="Plain-language duties triggered by the pricing clauses actually present",
+    )
+    sca_erosion: Optional[SCAErosion] = Field(
+        default=None,
+        description="Projected unrecovered OH/G&A/fee on SCA labor across option years",
     )

@@ -76,7 +76,9 @@ def write_stage_artifacts(state) -> list[str]:
         _write(
             out / "pricing" / "REGULATORY_COMPLIANCE.md",
             compliance_markdown(
-                state.pricing.compliance_findings, state.pricing.pricing_obligations
+                state.pricing.compliance_findings,
+                state.pricing.pricing_obligations,
+                state.pricing.sca_erosion,
             ),
         )
         template = state.pricing.structure.government_template_file if state.pricing.structure else None

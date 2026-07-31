@@ -35,6 +35,8 @@ gracefully without it.
 | Agents (one module per PRD roster entry) | `bidpilot/agents/` |
 | Deterministic pricing (wrap rates, WD floors) | `bidpilot/pricing/rates.py` — pure code, never LLM |
 | FAR compliance checks on the cost volume | `bidpilot/pricing/compliance.py` — read `docs/PRICING_COMPLIANCE.md` before changing a threshold or severity |
+| SCA margin erosion projection | `bidpilot/pricing/sca_erosion.py` — what 52.222-43 compliance costs in unrecovered OH/G&A/fee |
+| Local secrets (`.env`, gitignored) | `bidpilot/config.py` — a real env var always beats the file |
 | Fail-closed QA checks | `bidpilot/qa_checks.py` + `agents/qa.py` (LLM half) |
 | Rendering + exact page counts | `bidpilot/rendering.py` |
 | Reviewer edit loop | `bidpilot/drafts.py` (`sync-drafts`, clobber protection) |

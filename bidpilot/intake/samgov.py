@@ -45,6 +45,63 @@ def parse_notice_id(url_or_id: str) -> str:
     )
 
 
+def diagnose_api_failure(exc: BaseException) -> str:
+    """Turn a SAM.gov call failure into the fix, not the stack trace.
+
+    A rejected key, a blocked egress path, and a rate limit all arrive as
+    exceptions but need entirely different actions, and guessing wrong costs
+    an afternoon. Never echoes the exception text verbatim past the first
+    line: httpx embeds the request URL, which carries `api_key`.
+    """
+    name = type(exc).__name__
+    text = str(exc)
+
+    if isinstance(exc, httpx.HTTPStatusError):
+        code = exc.response.status_code
+        if code in (401, 403):
+            body = ""
+            try:
+                body = (exc.response.json().get("error", {}) or {}).get("message", "")
+            except Exception:  # noqa: BLE001 — body may not be JSON
+                body = ""
+            return (
+                f"HTTP {code} from api.sam.gov — the key was reached and REJECTED"
+                + (f": {body}" if body else "")
+                + ". Check that SAM_GOV_API_KEY is an api.data.gov key for the "
+                "Opportunities API (a SAM.gov system-account key is a different "
+                "credential), and that it is activated and not expired."
+            )
+        if code == 429:
+            return ("HTTP 429 — the key works but its daily rate limit is spent. "
+                    "Non-federal accounts get a modest quota; responses are "
+                    "cached on disk, so re-runs of the same query are free.")
+        if code >= 500:
+            return f"HTTP {code} — SAM.gov is failing upstream. Retry later; the key is fine."
+        return f"HTTP {code} from api.sam.gov."
+
+    # Never reached the API at all.
+    proxy_hint = ""
+    for var in ("HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy"):
+        if os.environ.get(var):
+            proxy_hint = (
+                f" An egress proxy is configured ({var}); a 403 on CONNECT is the "
+                "proxy's network policy denying api.sam.gov, NOT a bad key. "
+                "Allow the host in the environment's network policy, or run "
+                "outside the sandbox."
+            )
+            break
+    if "ProxyError" in name or "proxy" in text.lower():
+        return ("Could not reach api.sam.gov: the connection was refused before "
+                "the request was sent." + (proxy_hint or
+                " This is a network-path failure, not an authentication failure."))
+    if isinstance(exc, httpx.TimeoutException):
+        return "Timed out reaching api.sam.gov — network path or SAM.gov slowness." + proxy_hint
+    if isinstance(exc, httpx.TransportError):
+        return (f"Network error reaching api.sam.gov ({name}) — DNS, TLS, or "
+                "routing. The key was never presented." + proxy_hint)
+    return f"{name} while calling api.sam.gov."
+
+
 class SamGovClient:
     """SAM.gov client with NFR-3 resilience: idempotent GETs retry on
     connection errors, 429, and 5xx with exponential backoff (Retry-After

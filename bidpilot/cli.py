@@ -35,6 +35,9 @@ EXAMPLE_KB = Path(__file__).resolve().parent.parent / "kb.example"
 
 
 def main(argv: list[str] | None = None) -> int:
+    from .config import load_dotenv
+
+    load_dotenv()   # `.env` in the project root; a real env var always wins
     parser = argparse.ArgumentParser(prog="bidpilot", description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
 
@@ -459,6 +462,7 @@ def _reprice(args) -> int:
     from .assembly import write_stage_artifacts
     from .pricing import compliance
     from .pricing import rates as rates_mod
+    from .pricing import sca_erosion
     from .pricing.models import PricingModel
 
     kb = _load_kb_or_fail(args.kb)
@@ -504,6 +508,10 @@ def _reprice(args) -> int:
     pricing.total = rates_mod.total_of(priced)
     pricing.wd_violations = violations
     pricing.sensitivity = rates_mod.sensitivity(priced)
+    pricing.sca_erosion = (
+        sca_erosion.project_erosion(priced, indirects, total_price=pricing.total)
+        if sca_price_adjustment else None
+    )
     pricing.compliance_findings = compliance.check(
         compliance.context_from_pricing(
             pricing, clauses, escalation_rate=indirects.escalation_per_year
@@ -700,7 +708,7 @@ def _doctor(args) -> int:
         check("pdfplumber (PDF tables)", False, r"pip install 'bidpilot\[tables]'", warn_only=True)
 
     if args.network:
-        from .intake.samgov import SamGovClient
+        from .intake.samgov import SamGovClient, diagnose_api_failure
 
         sam = SamGovClient()
         record = None
@@ -708,7 +716,10 @@ def _doctor(args) -> int:
             data = sam.search_raw({"limit": 1, "ptype": "o"})
             record = (data.get("opportunitiesData") or [None])[0]
         except Exception as exc:
-            check("SAM.gov Opportunities API contract", False, str(exc))
+            # "It failed" is useless here: a rejected key, a blocked egress
+            # path, and a rate limit all surface as an exception but need
+            # completely different fixes.
+            check("SAM.gov Opportunities API contract", False, diagnose_api_failure(exc))
         else:
             shape_ok = bool(record) and all(k in record for k in ("noticeId", "title", "type"))
             check("SAM.gov Opportunities API contract", shape_ok,
