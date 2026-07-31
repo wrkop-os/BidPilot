@@ -151,17 +151,23 @@ def discover(
     days_back: int = 7,
     limit_per_naics: int = 25,
     sources: Optional[list] = None,
-) -> list[ScreenedOpportunity]:
+) -> tuple[list[ScreenedOpportunity], list[tuple[str, str]]]:
     """Search recent opportunities across every configured source, pre-screen,
     and rank. `sources` defaults to SAM.gov alone; pass extras (grants, SLED)
-    to widen the funnel without touching the screening logic."""
+    to widen the funnel without touching the screening logic.
+
+    Returns (results, source_failures). Callers MUST surface the failures:
+    an empty result list from a sweep that never reached its sources reads as
+    'nothing to bid on this week', which is the most damaging wrong answer
+    this command can give."""
     from .intake.sources import SamGovSource, search_all
 
     today = _dt.date.today()
     seen: set[str] = set()
     results: list[ScreenedOpportunity] = []
     feeds = sources if sources is not None else [SamGovSource(sam)]
-    for record in search_all(feeds, profile.naics_codes or [], days_back, limit_per_naics):
+    records, failures = search_all(feeds, profile.naics_codes or [], days_back, limit_per_naics)
+    for record in records:
         notice_id = (record.get("noticeId") or "").lower()
         if not notice_id or notice_id in seen:
             continue
@@ -171,7 +177,7 @@ def discover(
     results.sort(
         key=lambda o: (order.get(o.screen, 3), -(o.pwin or 0.0), o.deadline or "9999")
     )
-    return results
+    return results, failures
 
 
 def _parse_date(text: Optional[str]) -> Optional[_dt.date]:

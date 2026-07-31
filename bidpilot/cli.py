@@ -197,8 +197,17 @@ def _watch_amendments(args) -> int:
     for line in report_lines(results):
         console.print(line)
     stale = sum(1 for r in results if r.stale)
-    console.print(f"{len(results)} run(s) checked, {stale} with new amendments.")
-    return 1 if stale else 0
+    unchecked = sum(1 for r in results if r.unchecked)
+    console.print(
+        f"{len(results)} run(s): {len(results) - unchecked} verified, "
+        f"{stale} with new amendments, {unchecked} NOT verified."
+    )
+    if unchecked:
+        # This command is meant for cron. Exiting 0 when nothing could be
+        # checked would turn a total outage into a silent all-clear.
+        console.print("[red]Runs that could not be verified are not 'up to "
+                      "date' — check those solicitations by hand.[/red]")
+    return 1 if (stale or unchecked) else 0
 
 
 def _benchmark_price(args) -> int:
@@ -447,8 +456,17 @@ def _discover(args) -> int:
 
         keywords = [c.split(" (")[0][:60] for c in (kb.profile.capabilities or [])][:5]
         sources = [SamGovSource(sam), GrantsGovSource(keywords=keywords)]
-    results = discover(sam, kb.profile, days_back=args.days, sources=sources)
+    results, failures = discover(sam, kb.profile, days_back=args.days, sources=sources)
+    for name, reason in failures:
+        console.print(f"[red]{name} could not be searched:[/red] {reason}")
     if not results:
+        if failures:
+            # Never let an unreachable source read as a clean negative result.
+            console.print(
+                "[red]No results, but every source above FAILED — this is not "
+                "'nothing to bid on'. Fix the access problem and re-run.[/red]"
+            )
+            return 1
         console.print("No opportunities found for the profile's NAICS codes in the window.")
         return 0
     from rich.table import Table
@@ -553,10 +571,9 @@ def _reprice(args) -> int:
 
 
 def _costs(args) -> int:
-    from .intake.samgov import parse_notice_id
     from .telemetry import compute_costs, report_markdown
 
-    notice_id = parse_notice_id(args.url)
+    notice_id = _resolve_run_key(args.url)
     audit_path = Path(args.out) / notice_id / "audit.jsonl"
     if not audit_path.exists():
         console.print(f"[red]No audit log at {audit_path}.[/red]")
@@ -566,11 +583,39 @@ def _costs(args) -> int:
     return 0
 
 
-def _load_state_or_fail(args):
+def _resolve_run_key(ref: str) -> str:
+    """Which run does this argument name?
+
+    Accepts a SAM.gov URL or bare notice ID, and also a directory — either the
+    document folder a `--local` run was started from, or the run directory
+    itself. Without this, every follow-up command (status, costs, reprice,
+    redo, sync-drafts, benchmark-price, outcome) is unreachable after a local
+    run, because a content-derived run key is not something anyone has typed
+    down.
+    """
+    from .intake import local as local_intake
     from .intake.samgov import parse_notice_id
+
+    ref = (ref or "").strip()
+    if ref.startswith("local:"):
+        ref = ref[len("local:"):]
+    candidate = Path(ref).expanduser()
+    if candidate.is_dir():
+        # A run directory already carries its key as its name.
+        if (candidate / "state.json").exists():
+            return candidate.name
+        return local_intake.local_run_key(candidate)
+    return parse_notice_id(ref)
+
+
+def _load_state_or_fail(args):
     from .state import CheckpointStore
 
-    notice_id = parse_notice_id(args.url)
+    try:
+        notice_id = _resolve_run_key(args.url)
+    except (ValueError, OSError) as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise SystemExit(1) from exc
     run_dir = Path(args.out) / notice_id
     store = CheckpointStore(run_dir)
     state = store.load()
@@ -638,10 +683,9 @@ def _redo(args) -> int:
 def _status(args) -> int:
     """Operator view of a run, straight from the checkpoint — safe to call
     anytime, needs no API keys and makes no model calls."""
-    from .intake.samgov import parse_notice_id
     from .state import STAGE_ORDER, CheckpointStore
 
-    notice_id = parse_notice_id(args.url)
+    notice_id = _resolve_run_key(args.url)
     run_dir = Path(args.out) / notice_id
     state = CheckpointStore(run_dir).load()
     if state is None:
@@ -651,7 +695,11 @@ def _status(args) -> int:
     title = (state.notice.metadata.title if state.notice else None) or notice_id
     console.print(f"[bold]{title}[/bold]  (run {state.run_id})")
     if state.notice and state.notice.metadata.response_deadline:
-        console.print(f"deadline (SAM.gov): {state.notice.metadata.response_deadline}")
+        # Naming the wrong source for a deadline is worse than naming none:
+        # a locally-extracted date carries none of SAM.gov's authority.
+        local = (state.notice.metadata.raw_api_record or {}).get("source") == "local"
+        origin = "extracted from documents — verify" if local else "SAM.gov"
+        console.print(f"deadline ({origin}): {state.notice.metadata.response_deadline}")
 
     for stage in STAGE_ORDER:
         mark = "[green]✔[/green]" if state.is_done(stage) else "[dim]·[/dim]"

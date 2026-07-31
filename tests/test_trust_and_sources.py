@@ -143,8 +143,12 @@ def test_a_dead_source_never_sinks_the_sweep():
         def search(self, naics_codes, days_back, limit):
             return [{"noticeId": "a" * 32, "title": "ok"}]
 
-    records = search_all([Broken(), Fine()], ["541511"], 7, 10)
+    records, failures = search_all([Broken(), Fine()], ["541511"], 7, 10)
     assert [r["title"] for r in records] == ["ok"]
+    # The dead source is named, not swallowed: a caller that only sees an
+    # empty-ish record list would report "nothing to bid on" to a contractor.
+    assert len(failures) == 1
+    assert failures[0][0] and failures[0][1]
 
 
 def test_discover_merges_sources_and_dedups(tmp_path):
@@ -163,7 +167,8 @@ def test_discover_merges_sources_and_dedups(tmp_path):
             {"id": "999", "title": "grant one", "closeDate": "2099-01-01"},
         ]),
     )
-    results = discover(None, profile, sources=[SamGovSource(FakeSam()), grants])
+    results, failures = discover(None, profile, sources=[SamGovSource(FakeSam()), grants])
+    assert failures == []
     titles = [o.title for o in results]
     assert "sam one" in titles and "grant one" in titles
     assert "duplicate" not in titles            # deduped by notice id

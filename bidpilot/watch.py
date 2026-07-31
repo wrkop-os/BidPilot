@@ -23,10 +23,17 @@ class WatchResult:
     live: int = 0
     new_notice_ids: list[str] = field(default_factory=list)
     error: str | None = None
+    local: bool = False
 
     @property
     def stale(self) -> bool:
         return bool(self.new_notice_ids)
+
+    @property
+    def unchecked(self) -> bool:
+        """The chain could not be verified. Distinct from 'verified, nothing
+        new' -- a cron that treats the two alike never fires an alarm."""
+        return self.error is not None
 
 
 def check_run(sam: SamGovClient, run_dir: Path) -> WatchResult | None:
@@ -40,13 +47,25 @@ def check_run(sam: SamGovClient, run_dir: Path) -> WatchResult | None:
     known = {a.notice_id.lower() for a in state.notice.amendment_history}
     known.add(meta.notice_id.lower())
     result.known = len(known)
+
+    # A locally-ingested package has a content-derived notice ID that will
+    # never match a SAM.gov notice, so querying it would either error or --
+    # worse -- come back empty and read as "no new amendments". There is no
+    # chain to watch on that path; say so instead of implying an all-clear.
+    if (meta.raw_api_record or {}).get("source") == "local":
+        result.local = True
+        result.error = ("local document package - no amendment chain to query; "
+                        "check the portal yourself before submitting")
+        return result
+
     if not meta.solicitation_number:
         result.error = "no solicitation number on record - cannot re-query the chain"
         return result
     try:
         records = sam.search_by_solicitation_number(meta.solicitation_number)
     except Exception as exc:
-        result.error = f"SAM query failed: {type(exc).__name__}"
+        from .intake.samgov import diagnose_api_failure
+        result.error = diagnose_api_failure(exc)
         return result
     live_ids = {
         (r.get("noticeId") or "").lower() for r in records if r.get("noticeId")

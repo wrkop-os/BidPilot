@@ -149,6 +149,21 @@ caveats the CLI prints every time: local intake has **no amendment chain** to
 check, so confirm you have the latest version yourself; and it never invents
 metadata.
 
+Every follow-up command accepts the folder in place of a URL, so you never have
+to know the generated run key:
+
+```bash
+bidpilot status ./RFQ_Service_Desk
+bidpilot costs ./RFQ_Service_Desk
+bidpilot reprice ./RFQ_Service_Desk --kb kb.pro
+```
+
+`watch-amendments` reports local runs as **not verified** rather than up to
+date, and exits non-zero — a cron that treated "could not check" as "all clear"
+would never fire. `discover` behaves the same way: if every source failed, it
+says so and exits 1 instead of reporting "no opportunities found", which would
+read as *nothing to bid on this week*.
+
 `doctor --network` distinguishes the three ways a SAM.gov call fails — a
 rejected key, a spent rate limit, and a blocked network path — because they
 look identical in a stack trace and need completely different fixes. Note that

@@ -108,12 +108,23 @@ class GrantsGovSource:
 
 
 def search_all(sources: list, naics_codes: list[str], days_back: int,
-               limit: int) -> list[dict]:
-    """Sweep every source; one failing source never sinks the others."""
+               limit: int) -> tuple[list[dict], list[tuple[str, str]]]:
+    """Sweep every source; one failing source never sinks the others.
+
+    Returns (records, failures) where each failure is (source_name, reason).
+    The failures are not optional decoration: "no opportunities found" and
+    "the search never ran" look identical to a caller that only gets records,
+    and reporting the first when the second is true tells a contractor there
+    is nothing to bid on. That is the worst possible wrong answer here.
+    """
+    from .samgov import diagnose_api_failure
+
     records: list[dict] = []
+    failures: list[tuple[str, str]] = []
     for source in sources:
+        name = getattr(source, "name", type(source).__name__)
         try:
             records.extend(source.search(naics_codes, days_back, limit))
-        except Exception:
-            continue
-    return records
+        except Exception as exc:  # noqa: BLE001 — one dead source, not a dead sweep
+            failures.append((name, diagnose_api_failure(exc)))
+    return records, failures

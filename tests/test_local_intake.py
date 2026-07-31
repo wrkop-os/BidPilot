@@ -155,3 +155,37 @@ def test_documents_are_copied_into_the_run_and_hashed(tmp_path):
     assert len(record.sha256) == 64
     assert record.restricted is False          # nothing is login-gated locally
     assert pkg.restricted_files_flagged is False
+
+
+# -- follow-up commands must be able to name a local run ----------------------
+
+
+def test_a_local_run_is_addressable_by_folder_run_dir_or_key(tmp_path):
+    """After `run --local DIR`, every follow-up command (status, costs,
+    reprice, redo, sync-drafts, benchmark-price, outcome) still has to be able
+    to name that run. A content-derived key is not something anyone types, so
+    the folder itself must resolve."""
+    from bidpilot.cli import _resolve_run_key
+
+    src = _package_dir(tmp_path)
+    key = local_run_key(src)
+
+    assert _resolve_run_key(str(src)) == key            # the document folder
+    assert _resolve_run_key(f"local:{src}") == key      # as the pipeline records it
+    assert _resolve_run_key(key) == key                 # the bare key
+
+    # The run directory resolves to its own name, even though its contents are
+    # copies whose content hash differs from the source folder's.
+    run_dir = tmp_path / "runs" / key
+    run_dir.mkdir(parents=True)
+    (run_dir / "state.json").write_text("{}")
+    assert _resolve_run_key(str(run_dir)) == key
+
+
+def test_a_sam_url_still_resolves_and_garbage_still_fails(tmp_path):
+    from bidpilot.cli import _resolve_run_key
+
+    notice = "a" * 32
+    assert _resolve_run_key(f"https://sam.gov/opp/{notice}/view") == notice
+    with pytest.raises(ValueError):
+        _resolve_run_key("not-a-listing")
