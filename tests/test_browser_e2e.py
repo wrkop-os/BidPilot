@@ -119,7 +119,7 @@ def test_browser_full_run_gates_export_outcome(server, page, output_root):
     expect(page.locator("#url")).to_be_visible()
 
     page.fill("#url", NOTICE)
-    page.get_by_role("button", name="Analyze listing").click()
+    page.get_by_role("button", name="Analyze", exact=True).click()
 
     # The three human gates fire in order; approve each one from the browser
     # as its panel appears. Gate questions are distinct, so wait for the
@@ -174,9 +174,43 @@ def test_browser_bad_url_shows_error_without_starting_run(server, page):
 
     page.goto(server + "/")
     page.fill("#url", "not-a-sam-listing")
-    page.get_by_role("button", name="Analyze listing").click()
+    page.get_by_role("button", name="Analyze", exact=True).click()
 
     expect(page.locator("#startErr")).to_contain_text("notice ID")
 
     after = httpx.get(f"{server}/api/runs", timeout=10).json()
     assert len(after) == len(before), "a run was started for a garbage URL"
+
+
+def test_browser_local_documents_tab_switches_and_validates(server, page):
+    """The offline intake path has to be reachable and safe from the browser,
+    not just the CLI — that is where most people will actually use it."""
+    page.goto(server + "/")
+
+    # SAM tab is the default; the local pane is hidden until chosen.
+    expect(page.locator("#url")).to_be_visible()
+    expect(page.locator("#localDir")).to_be_hidden()
+
+    page.get_by_role("button", name="Local documents", exact=True).click()
+    expect(page.locator("#localDir")).to_be_visible()
+    expect(page.locator("#url")).to_be_hidden()
+
+    # The caveats that make this path safe to use must be on screen.
+    expect(page.locator("#paneLocal")).to_contain_text("never guessed")
+    expect(page.locator("#paneLocal")).to_contain_text("amendment chain")
+
+    # An empty path is refused client-side, before any run is started.
+    before = httpx.get(f"{server}/api/runs", timeout=10).json()
+    page.get_by_role("button", name="Analyze", exact=True).click()
+    expect(page.locator("#startErr")).to_contain_text("folder")
+    after = httpx.get(f"{server}/api/runs", timeout=10).json()
+    assert len(after) == len(before), "a run was started with no folder"
+
+    # A folder that does not exist is refused by the server, with a real reason.
+    page.fill("#localDir", "/definitely/not/here")
+    page.get_by_role("button", name="Analyze", exact=True).click()
+    expect(page.locator("#startErr")).to_contain_text("not a directory")
+
+    # Switching back restores the SAM.gov path.
+    page.get_by_role("button", name="SAM.gov listing", exact=True).click()
+    expect(page.locator("#url")).to_be_visible()

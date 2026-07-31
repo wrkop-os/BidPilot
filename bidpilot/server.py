@@ -24,6 +24,7 @@ from pydantic import BaseModel
 from rich.console import Console
 
 from . import orchestrator
+from .intake import local as local_intake
 from .intake.samgov import parse_notice_id
 from .state import Stage
 
@@ -79,7 +80,8 @@ class RunHandle:
 
 
 class StartRun(BaseModel):
-    url: str
+    url: str = ""
+    local_dir: str = ""
     analyze_only: bool = False
 
 
@@ -92,11 +94,13 @@ class OutcomeReq(BaseModel):
     outcome: str  # won | lost | no_bid
 
 
-def default_ctx_builder(url: str, out_root: Path, confirm, console) -> "orchestrator.RunContext":
+def default_ctx_builder(url: str, out_root: Path, confirm, console,
+                        local_source: Optional[Path] = None) -> "orchestrator.RunContext":
     from .kb.store import load_kb
 
     return orchestrator.make_context(
-        url, load_kb(), out_root, confirm=confirm, console=console, actor="web-operator"
+        url, load_kb(), out_root, confirm=confirm, console=console,
+        actor="web-operator", local_source=local_source,
     )
 
 
@@ -115,10 +119,28 @@ def create_app(ctx_builder: CtxBuilder = default_ctx_builder,
 
     @app.post("/api/runs")
     def start_run(req: StartRun):
-        try:
-            notice_id = parse_notice_id(req.url)
-        except ValueError as exc:
-            raise HTTPException(status_code=422, detail=str(exc))
+        # Two intake paths: a SAM.gov listing, or a folder of documents for
+        # when the API is unavailable (blocked egress, spent rate limit,
+        # login-gated attachments, or a package that was never on SAM.gov).
+        local_source: Optional[Path] = None
+        if req.local_dir:
+            local_source = Path(req.local_dir).expanduser()
+            if not local_source.is_dir():
+                raise HTTPException(
+                    status_code=422, detail=f"{local_source} is not a directory")
+            try:
+                notice_id = local_intake.local_run_key(local_source)
+            except local_intake.LocalIntakeError as exc:
+                raise HTTPException(status_code=422, detail=str(exc))
+        elif req.url:
+            try:
+                notice_id = parse_notice_id(req.url)
+            except ValueError as exc:
+                raise HTTPException(status_code=422, detail=str(exc))
+        else:
+            raise HTTPException(
+                status_code=422,
+                detail="Provide a SAM.gov listing URL, or a local document folder.")
         with runs_lock:
             existing = runs.get(notice_id)
             if existing and existing.running:
@@ -130,7 +152,8 @@ def create_app(ctx_builder: CtxBuilder = default_ctx_builder,
         handle = RunHandle(notice_id)
         console = Console(file=handle.log, width=100, no_color=True)
         try:
-            handle.ctx = ctx_builder(req.url, output_root, handle.confirm, console)
+            handle.ctx = ctx_builder(req.url or f"local:{local_source}", output_root,
+                                     handle.confirm, console, local_source)
         except Exception as exc:
             raise HTTPException(
                 status_code=500, detail=f"Could not start run: {type(exc).__name__}: {exc}"
@@ -257,23 +280,56 @@ button.decline{background:#c0392b}
 .err{background:#fbe4e0;border-left:4px solid #c0392b;padding:10px 14px;margin:10px 0}
 pre{background:#f2efe6;padding:10px;font-size:11px;overflow-x:auto;max-height:200px}
 a{color:#1f3a5f}.small{font-size:12px;color:#666}
+.tabs{margin-bottom:10px}
+.tab{background:#e2dccd;color:#1e2229;margin-right:6px;font-size:13px;padding:6px 14px}
+.tab.active{background:#1f3a5f;color:#fff}
+code{background:#f2efe6;padding:1px 4px;border-radius:3px}
 </style></head><body>
-<header><h1>BidPilot</h1><p>Paste a SAM.gov listing — it is analyzed and the response package the listing calls for is built. Humans keep the gates; nothing is signed or submitted.</p></header>
+<header><h1>BidPilot</h1><p>Paste a SAM.gov listing, or point at a folder of documents — it is analyzed and the response package the listing calls for is built. Humans keep the gates; nothing is signed or submitted.</p></header>
 <main>
 <section>
-<input type='text' id='url' placeholder='https://sam.gov/opp/<notice-id>/view'>
+<div class='tabs'>
+  <button type='button' id='tabSam' class='tab active' onclick='pickTab("sam")'>SAM.gov listing</button>
+  <button type='button' id='tabLocal' class='tab' onclick='pickTab("local")'>Local documents</button>
+</div>
+<div id='paneSam'>
+  <input type='text' id='url' placeholder='https://sam.gov/opp/<notice-id>/view'>
+</div>
+<div id='paneLocal' style='display:none'>
+  <input type='text' id='localDir' placeholder='/path/to/RFP_package'>
+  <p class='small'>A folder of solicitation documents. Use this when the SAM.gov API
+  is unavailable to you &mdash; blocked egress, spent rate limit, login-gated
+  attachments &mdash; or for a package that was never on SAM.gov.
+  An optional <code>notice.yaml</code> in the folder supplies metadata; anything
+  it omits is extracted from the documents or reported as missing, never guessed.
+  There is no amendment chain to check on this path: confirm you have the latest
+  version yourself.</p>
+</div>
 <label class='small'><input type='checkbox' id='analyzeOnly'> analyze only (stop after compliance shred)</label>
-<button onclick='startRun()'>Analyze listing</button>
+<button onclick='startRun()'>Analyze</button>
 <div id='startErr' class='small' style='color:#c0392b'></div>
 </section>
 <div id='runs'></div>
 </main>
 <script>
 const esc=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+window._tab='sam';
+function pickTab(which){
+  window._tab=which;
+  document.getElementById('paneSam').style.display   = which==='sam'   ? '' : 'none';
+  document.getElementById('paneLocal').style.display = which==='local' ? '' : 'none';
+  document.getElementById('tabSam').className   = 'tab' + (which==='sam'   ? ' active' : '');
+  document.getElementById('tabLocal').className = 'tab' + (which==='local' ? ' active' : '');
+  document.getElementById('startErr').textContent='';
+}
 async function startRun(){
-  const url=document.getElementById('url').value.trim();
+  const local=window._tab==='local';
+  const url=local?'':document.getElementById('url').value.trim();
+  const localDir=local?document.getElementById('localDir').value.trim():'';
+  if(local&&!localDir){document.getElementById('startErr').textContent='Enter a folder path.';return;}
+  if(!local&&!url){document.getElementById('startErr').textContent='Enter a SAM.gov listing URL.';return;}
   const analyze_only=document.getElementById('analyzeOnly').checked;
-  const r=await fetch('/api/runs',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url,analyze_only})});
+  const r=await fetch('/api/runs',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url,local_dir:localDir,analyze_only})});
   let msg='';
   if(!r.ok){ try{ msg=(await r.json()).detail; }catch(e){ msg='Could not start run (HTTP '+r.status+').'; } }
   document.getElementById('startErr').textContent=msg;

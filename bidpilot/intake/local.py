@@ -65,12 +65,19 @@ def local_run_key(source: Path) -> str:
     resumes the same run (FR-21) instead of starting a new one, and so that
     adding an amendment document produces a genuinely new run.
     """
+    documents = _document_files(source)
+    if not documents:
+        # sha256 of nothing is still a valid digest, so this has to be checked
+        # explicitly: otherwise an empty folder yields a plausible run key and
+        # starts a run that only fails later, deeper in.
+        raise LocalIntakeError(
+            f"No readable solicitation documents in {source}. Expected at least "
+            f"one of: {', '.join(sorted(READABLE_SUFFIXES))}"
+        )
     digest = hashlib.sha256()
-    for path in _document_files(source):
+    for path in documents:
         digest.update(path.name.encode("utf-8"))
         digest.update(_sha256(path).encode("ascii"))
-    if not digest.hexdigest():  # pragma: no cover — sha256 always yields
-        raise LocalIntakeError(f"No readable documents in {source}")
     return digest.hexdigest()[:32]
 
 

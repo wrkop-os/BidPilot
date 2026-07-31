@@ -16,8 +16,8 @@ from bidpilot.server import create_app
 from test_orchestrator_e2e import EXAMPLE_KB, NOTICE, FakeRouter, FakeSam
 
 
-def _fake_ctx_builder(url, out_root, confirm, console):
-    state, checkpoints = new_run(url, out_root)
+def _fake_ctx_builder(url, out_root, confirm, console, local_source=None):
+    state, checkpoints = new_run(url, out_root, local_source)
     audit = AuditLog(Path(state.run_dir) / "audit.jsonl")
     return RunContext(
         state=state,
@@ -29,6 +29,7 @@ def _fake_ctx_builder(url, out_root, confirm, console):
         console=console or RichConsole(quiet=True),
         confirm=confirm,
         actor="web-test",
+        local_source=local_source,
     )
 
 
@@ -112,7 +113,7 @@ def test_ui_served():
 def test_failed_ctx_builder_does_not_brick_the_dashboard(tmp_path):
     """A ctx_builder failure (missing ./kb is the likeliest first-run error)
     must not leave a ctx-less handle that makes every later poll 500."""
-    def exploding(url, out_root, confirm, console):
+    def exploding(url, out_root, confirm, console, local_source=None):
         raise FileNotFoundError("No knowledge base directory found.")
 
     app = create_app(ctx_builder=exploding, output_root=tmp_path)
@@ -150,3 +151,49 @@ def test_stale_gate_answer_cannot_answer_the_next_gate(tmp_path):
         client.post(f"/api/runs/{NOTICE}/gate",
                     json={"approve": False, "token": second["gate_token"]})
     _wait(client, NOTICE, lambda s: not s["running"])
+
+
+def test_web_ui_starts_a_run_from_a_local_document_folder(tmp_path):
+    """The browser path must work when the SAM.gov API does not — same reasons
+    the CLI has --local."""
+    src = tmp_path / "RFP_Package"
+    src.mkdir()
+    (src / "solicitation.txt").write_text(
+        "Solicitation Number: W9123-26-R-0001\nNAICS Code: 541511\n"
+        "Offers due: August 15, 2026 at 1:00 PM ET\n"
+    )
+    client = TestClient(create_app(_fake_ctx_builder, tmp_path / "runs"))
+
+    resp = client.post("/api/runs", json={"local_dir": str(src), "analyze_only": True})
+    assert resp.status_code == 200, resp.text
+    notice_id = resp.json()["notice_id"]
+    assert len(notice_id) == 32          # content-derived run key
+
+    status = _wait(client, notice_id,
+                   lambda s: not s["running"] or s.get("pending_gate"))
+    assert status.get("error") is None, status.get("error")
+
+
+def test_web_ui_rejects_an_empty_or_bogus_local_folder(tmp_path):
+    client = TestClient(create_app(_fake_ctx_builder, tmp_path / "runs"))
+
+    missing = client.post("/api/runs", json={"local_dir": str(tmp_path / "nope")})
+    assert missing.status_code == 422 and "not a directory" in missing.text
+
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    blank = client.post("/api/runs", json={"local_dir": str(empty)})
+    assert blank.status_code == 422
+
+    neither = client.post("/api/runs", json={})
+    assert neither.status_code == 422
+    assert "local document folder" in neither.text
+
+
+def test_ui_offers_both_intake_paths():
+    client = TestClient(create_app(_fake_ctx_builder))
+    body = client.get("/").text
+    assert "SAM.gov listing" in body and "Local documents" in body
+    assert "localDir" in body and "pickTab" in body
+    # The two caveats a local run must always carry.
+    assert "never guessed" in body and "amendment chain" in body
