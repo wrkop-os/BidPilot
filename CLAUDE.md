@@ -15,6 +15,8 @@ python -m pytest tests/test_rates.py::test_wrap_rate -q   # single test
 bidpilot doctor                  # env checks (--network pings the SAM API)
 bidpilot serve --port 8400       # web UI: paste listing URL, gates in browser
 bidpilot mle collect             # sweep runs for captured training data
+bidpilot kb-health --kb kb.pro   # KB quality gate (--strict exits 1 on issues)
+bidpilot kb-gaps --out runs      # what runs needed that the KB could not supply
 python -m evals.harness evals/corpus_demo/sample_extracted_matrix.json evals/corpus_demo/gold_matrix.csv
 ```
 
@@ -36,6 +38,7 @@ gracefully without it.
 | Rendering + exact page counts | `bidpilot/rendering.py` |
 | Reviewer edit loop | `bidpilot/drafts.py` (`sync-drafts`, clobber protection) |
 | Static domain data | `bidpilot/data/` (SBA size standards, clause regexes, portal playbooks) |
+| KB knowledge ops (gap mining, health) | `bidpilot/kb/ops.py` — deterministic, read-only; never edits the KB |
 | Company KB (sole source of company facts) | `bidpilot/kb/`; templates: `kb.example/` (minimal, used by tests) and `kb.pro/` (market-researched rates — sources in `kb.pro/MARKET_RESEARCH.md`) |
 | Web UI/API (listing in → gates → package out) | `bidpilot/server.py` (`bidpilot serve`; gates block on browser approval) |
 | MLE loop (capture → collect → export → serve custom LLM) | `bidpilot/mle/`; router env: `BIDPILOT_CUSTOM_LLM_URL/_MODEL/_TIERS`, `BIDPILOT_CAPTURE_TRAINING_DATA` |

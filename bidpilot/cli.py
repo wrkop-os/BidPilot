@@ -85,6 +85,15 @@ def main(argv: list[str] | None = None) -> int:
     doctor_p.add_argument("--kb", default=None)
     doctor_p.add_argument("--network", action="store_true", help="Also ping the SAM.gov API (NFR-3 contract check)")
 
+    kbg_p = sub.add_parser("kb-gaps", help="Mine runs for knowledge the KB could not supply, ranked")
+    kbg_p.add_argument("--out", default="runs")
+    kbg_p.add_argument("--write", metavar="DIR", default=None, help="Also write the report to DIR")
+
+    kbh_p = sub.add_parser("kb-health", help="KB quality: staleness, duplicates, broken refs, thin records")
+    kbh_p.add_argument("--kb", default=None)
+    kbh_p.add_argument("--max-age-days", type=int, default=365)
+    kbh_p.add_argument("--strict", action="store_true", help="Exit 1 if any issue is found (CI gate)")
+
     int_p = sub.add_parser("interview", help="KB-gap onboarding interview")
     int_p.add_argument("--kb", default=None)
 
@@ -138,6 +147,10 @@ def main(argv: list[str] | None = None) -> int:
         return _mle(args)
     if args.command == "init-kb":
         return _init_kb(args.path)
+    if args.command == "kb-gaps":
+        return _kb_gaps(args)
+    if args.command == "kb-health":
+        return _kb_health(args)
     if args.command == "interview":
         return _interview(args)
     if args.command == "amend":
@@ -222,6 +235,29 @@ def _outcome(args) -> int:
         f"({labeled} labeled outcomes; training unlocks at 30)"
     )
     return 0
+
+
+def _kb_gaps(args) -> int:
+    from .kb.ops import gaps_markdown, mine_gaps
+
+    gaps = mine_gaps(Path(args.out))
+    console.print(gaps_markdown(gaps))
+    if args.write:
+        dest = Path(args.write)
+        dest.mkdir(parents=True, exist_ok=True)
+        path = dest / "KB_GAPS.md"
+        path.write_text(gaps_markdown(gaps), encoding="utf-8")
+        console.print(f"\nwritten: {path}")
+    return 0
+
+
+def _kb_health(args) -> int:
+    from .kb.ops import health, health_markdown
+
+    kb = _load_kb_or_fail(args.kb)
+    report = health(kb, max_age_days=args.max_age_days)
+    console.print(health_markdown(report, kb))
+    return 1 if (args.strict and report.issues) else 0
 
 
 def _serve(args) -> int:
