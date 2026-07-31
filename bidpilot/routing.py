@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import time
 from enum import Enum
 from pathlib import Path
@@ -54,10 +55,25 @@ class MissingCredentialsError(RuntimeError):
     """No usable model backend is configured — actionable, not a stack trace."""
 
 
+class CustomBackendError(RuntimeError):
+    """The custom model endpoint is configured but unusable. Names the URL and
+    the reason, because a typo'd BIDPILOT_CUSTOM_LLM_URL is the likeliest
+    first-run mistake on this path."""
+
+
 class CustomLLMBackend:
     """OpenAI-compatible chat-completions client for self-hosted or
     fine-tuned models. Structured output is enforced by schema-in-prompt +
     parse-with-one-retry (JSON mode requested when the server honors it)."""
+
+    # Self-hosted inference restarts, autoscales, and rate-limits. Without
+    # retries a single blip destroys a run that is nine stages deep and has
+    # already cost real money, so this path gets the same NFR-3 resilience the
+    # SAM.gov client has: retry connection errors, 429 and 5xx with exponential
+    # backoff, honor Retry-After, and never retry a 4xx that will not change.
+    MAX_RETRIES = 3
+    BACKOFF_BASE_S = 1.0
+    BACKOFF_CAP_S = 30.0
 
     def __init__(self, base_url: str, model: str, api_key: str = "",
                  timeout: float = 300.0, transport: Optional[httpx.BaseTransport] = None):
@@ -65,6 +81,7 @@ class CustomLLMBackend:
         self.model = model
         headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
         self._http = httpx.Client(timeout=timeout, headers=headers, transport=transport)
+        self._sleep = time.sleep      # injectable so tests do not actually wait
 
     def chat(self, system: str, prompt: str, max_tokens: int, json_mode: bool = False) -> dict:
         payload = {
@@ -77,9 +94,46 @@ class CustomLLMBackend:
         }
         if json_mode:
             payload["response_format"] = {"type": "json_object"}
-        resp = self._http.post(f"{self.base_url}/chat/completions", json=payload)
-        resp.raise_for_status()
-        return resp.json()
+        url = f"{self.base_url}/chat/completions"
+
+        last_exc: Optional[Exception] = None
+        for attempt in range(self.MAX_RETRIES + 1):
+            try:
+                resp = self._http.post(url, json=payload)
+            except (httpx.TransportError, httpx.TimeoutException) as exc:
+                last_exc = exc
+                if attempt < self.MAX_RETRIES:
+                    self._backoff(attempt, None)
+                    continue
+                raise CustomBackendError(
+                    f"Could not reach the custom model at {self.base_url} after "
+                    f"{self.MAX_RETRIES + 1} attempts ({type(exc).__name__}). "
+                    "Check BIDPILOT_CUSTOM_LLM_URL and that the server is up."
+                ) from exc
+            if resp.status_code == 429 or resp.status_code >= 500:
+                last_exc = httpx.HTTPStatusError(
+                    f"{resp.status_code} from the custom model",
+                    request=resp.request, response=resp,
+                )
+                if attempt < self.MAX_RETRIES:
+                    self._backoff(attempt, resp.headers.get("retry-after"))
+                    continue
+            if resp.status_code >= 400:
+                raise CustomBackendError(
+                    f"Custom model returned HTTP {resp.status_code} from "
+                    f"{self.base_url}: {resp.text[:200]}"
+                )
+            return resp.json()
+        raise CustomBackendError(str(last_exc))      # pragma: no cover — loop always returns/raises
+
+    def _backoff(self, attempt: int, retry_after: Optional[str]) -> None:
+        delay = min(self.BACKOFF_BASE_S * (2 ** attempt), self.BACKOFF_CAP_S)
+        if retry_after:
+            try:
+                delay = max(delay, float(retry_after))
+            except ValueError:
+                pass
+        self._sleep(delay)
 
     def complete(self, system: str, prompt: str, max_tokens: int) -> tuple[str, dict]:
         data = self.chat(system, prompt, max_tokens)
@@ -113,13 +167,60 @@ class CustomLLMBackend:
         raise RuntimeError(f"Custom model output failed {output_type.__name__} validation: {last_err}")
 
 
+_FENCE_RE = re.compile(r"```(?:json)?\s*\n?(.*?)```", re.DOTALL | re.IGNORECASE)
+
+
 def _strip_fences(text: str) -> str:
-    text = text.strip()
-    if text.startswith("```"):
-        text = text.split("\n", 1)[1] if "\n" in text else text
-        if text.rstrip().endswith("```"):
-            text = text.rstrip()[:-3]
-    return text.strip()
+    """Recover the JSON object from whatever a model actually returned.
+
+    Frontier models honor "no prose, no markdown fences". Small and local
+    models — precisely the ones people point BIDPILOT_CUSTOM_LLM_URL at —
+    reliably answer with "Sure! Here you go:" and a fenced block, and used to
+    fail every schema parse on this path. Being strict here does not make
+    those models behave; it just makes the keyless route unusable.
+
+    Tried in order of trustworthiness: the whole string, a fenced block
+    anywhere in it, then the first balanced brace span.
+    """
+    text = (text or "").strip()
+    if not text:
+        return text
+    if text[:1] in "{[":
+        return text
+
+    fenced = _FENCE_RE.search(text)
+    if fenced:
+        inner = fenced.group(1).strip()
+        if inner:
+            return inner
+
+    # Unfenced prose around a bare object: find the first balanced {...},
+    # respecting strings and escapes so a brace inside a value cannot end it.
+    start = text.find("{")
+    if start < 0:
+        return text
+    depth = 0
+    in_string = False
+    escaped = False
+    for i in range(start, len(text)):
+        char = text[i]
+        if in_string:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                in_string = False
+            continue
+        if char == '"':
+            in_string = True
+        elif char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                return text[start : i + 1]
+    return text
 
 
 def custom_backend_from_env() -> tuple[Optional[CustomLLMBackend], set[Tier]]:

@@ -164,6 +164,30 @@ would never fire. `discover` behaves the same way: if every source failed, it
 says so and exits 1 instead of reporting "no opportunities found", which would
 read as *nothing to bid on this week*.
 
+### Running without an Anthropic key
+
+`BIDPILOT_CUSTOM_LLM_URL` routes every model call to any OpenAI-compatible
+chat endpoint - vLLM, TGI, Ollama, a fine-tuned deployment, an Azure or
+Bedrock shim, or a gateway in front of your own key:
+
+```bash
+export BIDPILOT_CUSTOM_LLM_URL=http://localhost:11434/v1   # e.g. Ollama
+export BIDPILOT_CUSTOM_LLM_MODEL=your-model
+export BIDPILOT_CUSTOM_LLM_TIERS=all      # or "fast" to move only volume work
+bidpilot run --local ./RFQ_Service_Desk --kb kb.pro
+```
+
+No Anthropic key is needed on this path - the client is built lazily and never
+reached. `BIDPILOT_CUSTOM_LLM_TIERS=fast` runs a distilled model on extraction
+and classification while judgment calls stay on the frontier tier.
+
+This route is covered end to end by `tests/test_custom_llm_live.py`, which runs
+the whole pipeline over a real socket against a real OpenAI-compatible server,
+including the failures self-hosted inference actually produces: transient 503s,
+rate limits, prose-wrapped JSON, and schema violations. The citation gate holds
+here too - an uncited or fabricated KB reference blocks export exactly as it
+does on the Anthropic path.
+
 `doctor --network` distinguishes the three ways a SAM.gov call fails — a
 rejected key, a spent rate limit, and a blocked network path — because they
 look identical in a stack trace and need completely different fixes. Note that
