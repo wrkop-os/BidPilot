@@ -17,6 +17,7 @@ whether it belongs in an existing one first.
 |---|---|---|
 | [`../CLAUDE.md`](../CLAUDE.md) | Architecture map, non-negotiable invariants, conventions | Before changing anything |
 | [`PRICING_COMPLIANCE.md`](PRICING_COMPLIANCE.md) | The regulatory layer under the estimate: which FAR clauses change the arithmetic, dated thresholds, evidence quality | Touching `bidpilot/pricing/` or arguing with a compliance finding |
+| [`DOMAIN_MODEL.md`](DOMAIN_MODEL.md) | The in-house trained requirement model: corpus, grouped split, measured results, and what a from-scratch drafting LLM would actually take | Touching `bidpilot/ml/` or asking why the backend still calls an LLM |
 | [`ML_ADOPTION.md`](ML_ADOPTION.md) | ML component inventory, P(win) iteration compact, promotion contracts | Touching `bidpilot/ml/` or `bidpilot/mle/` |
 | [`OPS_HARNESS.md`](OPS_HARNESS.md) | The autonomous ops harness and its consent boundaries | Adding scheduled/automated behavior |
 | [`TEST_SUITE_PERF.md`](TEST_SUITE_PERF.md) | Test-suite timing and parallelization notes | The suite feels slow |

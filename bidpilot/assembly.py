@@ -259,6 +259,14 @@ def review_checklist(state) -> str:
         lines.append("")
         lines.append("## [NEEDS INPUT] items (facts the KB lacks)")
         lines += [f"- [ ] {c.input_note or c.text[:120]}" for c in needs_input]
+    if state.matrix and state.matrix.model_flagged_gaps:
+        lines.append("")
+        lines.append("## Possible missed requirements (trained domain model)")
+        lines.append("")
+        lines.append("_The local requirement model found these in the corpus but "
+                     "could not match them to a matrix entry. Confirm or dismiss "
+                     "each — none were added automatically._")
+        lines += [f"- [ ] {gap}" for gap in state.matrix.model_flagged_gaps]
     if state.pricing:
         lines.append("")
         lines.append("## Pricing")

@@ -140,11 +140,20 @@ def shred(router: ModelRouter, doc_tree: DocTree) -> ComplianceMatrix:
         if req_id in by_id:
             by_id[req_id].owner_section = section_id
 
-    return ComplianceMatrix(
+    matrix = ComplianceMatrix(
         requirements=merged,
         outline=outline_result.outline,
         constraints=outline_result.constraints,
     )
+
+    # Fourth pass, deterministic and local: the trained domain model re-reads
+    # the corpus and reports requirement-shaped sentences the matrix does not
+    # cover. No-op unless a promoted artifact is configured (BIDPILOT_REQ_MODEL).
+    from ..ml.recall_net import find_missed
+
+    for candidate in find_missed(doc_tree, matrix):
+        matrix.model_flagged_gaps.append(candidate.render())
+    return matrix
 
 
 # ---------------------------------------------------------------------------

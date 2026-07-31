@@ -285,6 +285,15 @@ class ComplianceMatrix(BaseModel):
     requirements: list[Requirement] = Field(default_factory=list)
     outline: Optional[ProposalOutline] = None
     constraints: FormatConstraints = Field(default_factory=FormatConstraints)
+    model_flagged_gaps: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Requirement-shaped sentences the trained domain model found in the "
+            "corpus but could not locate in this matrix. Candidates for a human "
+            "to confirm or dismiss — never auto-added, because a false positive "
+            "in the matrix is a requirement nobody owes."
+        ),
+    )
 
 
 # ---------------------------------------------------------------------------

@@ -45,6 +45,7 @@ gracefully without it.
 | KB knowledge ops (gap mining, health) | `bidpilot/kb/ops.py` — deterministic, read-only; never edits the KB |
 | Company KB (sole source of company facts) | `bidpilot/kb/`; templates: `kb.example/` (minimal, used by tests) and `kb.pro/` (market-researched rates — sources in `kb.pro/MARKET_RESEARCH.md`) |
 | Web UI/API (listing in → gates → package out) | `bidpilot/server.py` (`bidpilot serve`; gates block on browser approval) |
+| Trained domain model (requirement screening, no API) | `bidpilot/ml/requirements_model.py` + `corpus.py` + `train_requirements.py`; wired as a recall net in `ml/recall_net.py` — read `docs/DOMAIN_MODEL.md` |
 | Keyless model backend (any OpenAI-compatible endpoint) | `bidpilot/routing.py` `CustomLLMBackend` — retries 429/5xx/transport, tolerates prose-wrapped JSON; contract-tested over a real socket in `tests/test_custom_llm_live.py` |
 | MLE loop (capture → collect → export → serve custom LLM) | `bidpilot/mle/`; router env: `BIDPILOT_CUSTOM_LLM_URL/_MODEL/_TIERS`, `BIDPILOT_CAPTURE_TRAINING_DATA` |
 

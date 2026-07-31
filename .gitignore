@@ -14,3 +14,7 @@ output/
 knowledge_base/
 evals/corpus/
 .env
+
+# Trained artifacts: deterministic to regenerate, and joblib is pickle.
+# `python -m bidpilot.ml.train_requirements`
+/models/
