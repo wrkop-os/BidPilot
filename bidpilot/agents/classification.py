@@ -6,6 +6,7 @@ dates are extracted timezone-explicit and cross-checked against metadata."""
 from __future__ import annotations
 
 from ..models import Classification, DocTree, NoticeMetadata, NoticeType
+from ..prompting import split_for_cache
 from ..routing import ModelRouter, Tier
 
 SYSTEM = """You classify federal contract opportunity notices. Determine:
@@ -37,6 +38,7 @@ CONFIDENCE_ESCALATION_THRESHOLD = 0.75
 
 
 def classify(router: ModelRouter, metadata: NoticeMetadata, doc_tree: DocTree) -> Classification:
+    _corpus = split_for_cache(doc_tree.corpus(), 150000)
     prompt = f"""Classify this opportunity.
 
 SAM.gov metadata:
@@ -46,10 +48,11 @@ SAM.gov metadata:
 - set-aside: {metadata.set_aside or "none"}
 
 Corpus (first 150k chars):
-{doc_tree.corpus()[:150_000]}"""
+{_corpus.tail}"""
 
     result = router.structured(
-        Tier.FAST, system=SYSTEM, prompt=prompt, output_type=Classification, stage="classify",
+        Tier.FAST, system=SYSTEM, prompt=prompt, output_type=Classification,
+        stage="classify", cache_prefix=_corpus.head,
     )
 
     # Rules override: trust SAM.gov's own type field when it maps cleanly and
@@ -63,6 +66,7 @@ Corpus (first 150k chars):
     if result.confidence < CONFIDENCE_ESCALATION_THRESHOLD:
         result = router.structured(
             Tier.FRONTIER, system=SYSTEM, prompt=prompt, output_type=Classification,
+            cache_prefix=_corpus.head,
             stage="classify.escalated",
         )
         result.escalated = True

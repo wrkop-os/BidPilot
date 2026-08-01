@@ -22,6 +22,11 @@ MODEL_PRICING: dict[str, tuple[float, float]] = {
 
 NFR2_BUDGET_USD = 25.0
 
+# Cached input is billed differently: a premium to write the cache, a small
+# fraction to read it. Both are multipliers on the model's input price.
+CACHE_WRITE_MULTIPLIER = 1.25
+CACHE_READ_MULTIPLIER = 0.10
+
 
 def _price_for(model: str) -> tuple[float, float]:
     for known, price in MODEL_PRICING.items():
@@ -36,7 +41,13 @@ class StageCost:
     failures: int = 0
     tokens_in: int = 0
     tokens_out: int = 0
+    cache_write_tokens: int = 0
+    cache_read_tokens: int = 0
     cost_usd: float = 0.0
+    # What the cached reads would have cost at the full input rate minus what
+    # they did cost. Accumulated in compute_costs, which knows the per-model
+    # price; reported so the optimization is visible rather than asserted.
+    cache_saving_usd: float = 0.0
     duration_s: float = 0.0
 
 
@@ -66,14 +77,26 @@ def compute_costs(audit_path: Path) -> RunCost:
         model = entry.get("model") or "unknown"
         tokens_in = int(entry.get("tokens_in") or 0)
         tokens_out = int(entry.get("tokens_out") or 0)
+        cache_write = int(entry.get("cache_write_tokens") or 0)
+        cache_read = int(entry.get("cache_read_tokens") or 0)
         in_price, out_price = _price_for(model)
-        cost = tokens_in / 1_000_000 * in_price + tokens_out / 1_000_000 * out_price
+        cost = (
+            tokens_in / 1_000_000 * in_price
+            + tokens_out / 1_000_000 * out_price
+            + cache_write / 1_000_000 * in_price * CACHE_WRITE_MULTIPLIER
+            + cache_read / 1_000_000 * in_price * CACHE_READ_MULTIPLIER
+        )
         stage = _stage_group(entry.get("stage") or "unknown")
         for bucket in (run_cost.by_stage[stage], run_cost.by_model[model], run_cost.total):
             bucket.calls += 1
             bucket.tokens_in += tokens_in
             bucket.tokens_out += tokens_out
+            bucket.cache_write_tokens += cache_write
+            bucket.cache_read_tokens += cache_read
             bucket.cost_usd += cost
+            bucket.cache_saving_usd += (
+                cache_read / 1_000_000 * in_price * (1 - CACHE_READ_MULTIPLIER)
+            )
             bucket.duration_s += float(entry.get("duration_s") or 0)
     return run_cost
 
@@ -90,6 +113,11 @@ def report_markdown(run_cost: RunCost) -> str:
         f"**Total model spend: ${run_cost.total.cost_usd:.2f}** "
         f"(NFR-2 budget ${NFR2_BUDGET_USD:.0f} — "
         f"{'WITHIN' if run_cost.within_budget() else 'OVER'} budget)",
+        (f"Prompt cache: {run_cost.total.cache_read_tokens:,} tokens re-read, "
+         f"${run_cost.total.cache_saving_usd:.2f} saved vs sending them again"
+         if run_cost.total.cache_read_tokens else
+         "Prompt cache: no cached reads this run"),
+        "",
         f"Calls: {run_cost.total.calls} | failed: {run_cost.total.failures} | "
         f"tokens in: {run_cost.total.tokens_in:,} | "
         f"out: {run_cost.total.tokens_out:,} | model time: {run_cost.total.duration_s:.0f}s",

@@ -82,6 +82,14 @@ class ProposalState(BaseModel):
         default=None, description="e.g. CUI/ITAR halt path, no-bid decision"
     )
     export_path: Optional[str] = None
+    corpus_truncation_notice: Optional[str] = Field(
+        default=None,
+        description=(
+            "Set when the corpus is larger than the tightest per-stage cap, so "
+            "at least one stage worked from a fragment. Silence here means "
+            "every stage saw the whole document set."
+        ),
+    )
 
     # -- control helpers -------------------------------------------------------
 

@@ -93,7 +93,11 @@ class FakeRouter:
     def __init__(self):
         self.calls = []
 
-    def structured(self, tier, *, system, prompt, output_type, max_tokens=16000, stage=None):
+    def structured(self, tier, *, system, prompt, output_type, max_tokens=16000,
+                   stage=None, cache_prefix=None):
+        # The cached prefix is part of what the model sees; a fake that
+        # ignored it would let a prompt-construction bug through.
+        prompt = f"{cache_prefix}\n\n{prompt}" if cache_prefix else prompt
         self.calls.append((stage, output_type.__name__))
         name = output_type.__name__
         if name == "Classification":

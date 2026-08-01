@@ -18,6 +18,7 @@ from ..data.clause_patterns import scan_clauses
 from ..intake.samgov import SamGovClient
 from ..kb.store import KnowledgeBase
 from ..models import Classification, DocTree, EligibilityReport, NoticeMetadata
+from ..prompting import split_for_cache
 from ..routing import ModelRouter, Tier
 
 SYSTEM = """You are a federal contracting eligibility analyst. Evaluate ALL of:
@@ -50,6 +51,7 @@ def check_eligibility(
 ) -> EligibilityReport:
     profile = kb.profile
     corpus = doc_tree.corpus()
+    _corpus = split_for_cache(corpus, 300_000)
 
     # -- deterministic evidence gathering (code, not LLM) ----------------------
     clause_hits = scan_clauses(corpus)
@@ -109,12 +111,13 @@ Classification: {classification.model_dump_json()}
 === PAST PERFORMANCE SUMMARY ===
 {kb.past_performance_text()}
 
-=== SOLICITATION CORPUS (for requirements the scanner can't see) ===
-{corpus[:300_000]}"""
+=== SOLICITATION CORPUS (continued) ===
+{_corpus.tail}"""
 
     return router.structured(
         Tier.FRONTIER,
         system=SYSTEM,
+        cache_prefix=_corpus.head,
         prompt=prompt,
         output_type=EligibilityReport,
         max_tokens=16000,

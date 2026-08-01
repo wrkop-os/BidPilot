@@ -259,6 +259,13 @@ def review_checklist(state) -> str:
         lines.append("")
         lines.append("## [NEEDS INPUT] items (facts the KB lacks)")
         lines += [f"- [ ] {c.input_note or c.text[:120]}" for c in needs_input]
+    if getattr(state, "corpus_truncation_notice", None):
+        lines.append("")
+        lines.append("## \U0001f6d1 Corpus truncation")
+        lines.append("")
+        lines.append(f"- [ ] {state.corpus_truncation_notice}")
+        lines.append("  Split the package into smaller runs, or review the "
+                     "dropped tail by hand, before relying on completeness.")
     if state.matrix and state.matrix.model_flagged_gaps:
         lines.append("")
         lines.append("## Possible missed requirements (trained domain model)")

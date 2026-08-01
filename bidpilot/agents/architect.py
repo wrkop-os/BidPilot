@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from ..kb.store import KnowledgeBase
 from ..models import ComplianceMatrix, DocTree, WinStrategy
+from ..prompting import split_for_cache
 from ..routing import ModelRouter, Tier
 
 SYSTEM = """You are a capture strategist for a government contractor. From the
@@ -30,6 +31,7 @@ def build_strategy(
         for r in matrix.requirements
         if r.category.value == "evaluation"
     )
+    _corpus = split_for_cache(doc_tree.corpus(), 400000)
     prompt = f"""Develop the win strategy.
 
 === EVALUATION FACTORS (from the compliance matrix) ===
@@ -39,12 +41,13 @@ def build_strategy(
 {kb.citable_corpus()[:150_000]}
 
 === SOLICITATION CORPUS ===
-{doc_tree.corpus()[:400_000]}"""
+{_corpus.tail}"""
     return router.structured(
         Tier.FRONTIER,
         system=SYSTEM,
         prompt=prompt,
         output_type=WinStrategy,
+        cache_prefix=_corpus.head,
         max_tokens=16000,
         stage="strategy",
     )

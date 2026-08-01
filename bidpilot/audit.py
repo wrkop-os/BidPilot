@@ -39,6 +39,8 @@ class AuditLog:
         prompt_sha256: Optional[str] = None,
         tokens_in: Optional[int] = None,
         tokens_out: Optional[int] = None,
+        cache_write_tokens: Optional[int] = None,
+        cache_read_tokens: Optional[int] = None,
         duration_s: Optional[float] = None,
         detail: Any = None,
     ) -> None:
@@ -50,6 +52,8 @@ class AuditLog:
             "model": model,
             "prompt_sha256": prompt_sha256,
             "tokens_in": tokens_in,
+            "cache_write_tokens": cache_write_tokens,
+            "cache_read_tokens": cache_read_tokens,
             "tokens_out": tokens_out,
             "duration_s": duration_s,
             "detail": detail,

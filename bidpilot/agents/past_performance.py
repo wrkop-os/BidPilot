@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from ..kb.store import KnowledgeBase
 from ..models import ComplianceMatrix, DocTree, PastPerformanceSelection
+from ..prompting import split_for_cache
 from ..routing import ModelRouter, Tier
 
 SYSTEM = """You select and present past performance references for a federal
@@ -29,6 +30,7 @@ def select_past_performance(
         for r in matrix.requirements
         if "past performance" in r.verbatim_text.lower() or "reference" in r.verbatim_text.lower()
     )
+    _corpus = split_for_cache(doc_tree.corpus(), 200000)
     prompt = f"""Select past performance references.
 
 === PAST-PERFORMANCE REQUIREMENTS ===
@@ -38,11 +40,12 @@ def select_past_performance(
 {kb.past_performance_text()}
 
 === SOLICITATION CORPUS (scope for relevancy) ===
-{doc_tree.corpus()[:200_000]}"""
+{_corpus.tail}"""
     return router.structured(
         Tier.FRONTIER,
         system=SYSTEM,
         prompt=prompt,
         output_type=PastPerformanceSelection,
+        cache_prefix=_corpus.head,
         stage="past_performance",
     )

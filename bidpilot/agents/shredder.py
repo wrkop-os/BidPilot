@@ -23,6 +23,7 @@ from ..models import (
     ProposalOutline,
     Requirement,
 )
+from ..prompting import split_for_cache
 from ..routing import ModelRouter, Tier
 
 WINDOW_CHARS = 60_000
@@ -113,15 +114,20 @@ def shred(router: ModelRouter, doc_tree: DocTree) -> ComplianceMatrix:
     merged = dedup_requirements(raw)
 
     # Pass 3 — adversarial completeness pass on the frontier model.
+    # Both frontier passes below read the whole corpus. Sending it as a shared
+    # cached prefix means the second one re-reads it at a fraction of the cost
+    # instead of paying full input price for identical bytes.
+    _corpus = split_for_cache(doc_tree.corpus(), len(doc_tree.corpus()))
     matrix_text = "\n".join(f"- ({r.source.render()}) {r.verbatim_text}" for r in merged)
     missing = router.structured(
         Tier.FRONTIER,
         system=ADVERSARIAL_SYSTEM,
+        cache_prefix=_corpus.head,
         prompt=f"""=== CURRENT MATRIX ({len(merged)} requirements) ===
 {matrix_text}
 
-=== FULL CORPUS ===
-{doc_tree.corpus()}""",
+=== FULL CORPUS (continued) ===
+{_corpus.tail}""",
         output_type=_ExtractedRequirements,
         max_tokens=32000,
         stage="shred.adversarial",
@@ -134,11 +140,12 @@ def shred(router: ModelRouter, doc_tree: DocTree) -> ComplianceMatrix:
     outline_result = router.structured(
         Tier.FRONTIER,
         system=OUTLINE_SYSTEM,
+        cache_prefix=_corpus.head,
         prompt=f"""=== REQUIREMENTS ===
 {req_list}
 
-=== FULL CORPUS ===
-{doc_tree.corpus()}""",
+=== FULL CORPUS (continued) ===
+{_corpus.tail}""",
         output_type=_OutlineAndConstraints,
         max_tokens=32000,
         stage="shred.outline",

@@ -164,6 +164,27 @@ would never fire. `discover` behaves the same way: if every source failed, it
 says so and exits 1 instead of reporting "no opportunities found", which would
 read as *nothing to bid on this week*.
 
+### Cost: one corpus, sent once
+
+Eleven stages read the same solicitation. Measured on a real run, that turned
+34K chars of source into 468K chars on the wire — a 14x amplification that was
+pure repetition.
+
+The corpus now travels as a **shared cached prefix**: one leading content block,
+byte-identical across every stage, written to the cache once and re-read at a
+fraction of the input rate. On a 150K-char corpus across the eight stages that
+send it, that is roughly **$1.50 -> $0.37 per run** at Opus input pricing.
+
+`bidpilot costs <run>` reports cached tokens and the dollars saved, because a
+saving nobody can see is one nobody will defend when a refactor breaks it. The
+break is silent — a single differing character makes every call a cache miss —
+so a test runs the whole pipeline and asserts every prefix hashes identically.
+
+The same split made a pre-existing problem visible: stages cap how much corpus
+they send, and past that cap the tail was simply never seen. A run whose corpus
+exceeds the tightest cap now says so, in the console and in
+`REVIEW_CHECKLIST.md`.
+
 ### The in-house domain model
 
 Part of the backend is a model trained in this repo rather than called over an

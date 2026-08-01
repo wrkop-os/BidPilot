@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from ..kb.store import KnowledgeBase
 from ..models import DocTree, FormsPackage, NoticePackage
+from ..prompting import split_for_cache
 from ..routing import ModelRouter, Tier
 
 SYSTEM = """You are a contracts administrator preparing the forms package for a
@@ -31,6 +32,7 @@ def prepare_forms(
     amendments = "\n".join(
         f"- {a.notice_id} posted {a.posted_date or '?'}" for a in notice.amendment_history
     )
+    _corpus = split_for_cache(doc_tree.corpus(), 300000)
     prompt = f"""Prepare the forms package.
 
 === AMENDMENT CHAIN (each needs acknowledgment) ===
@@ -40,9 +42,10 @@ def prepare_forms(
 {kb.profile_text()}
 
 === SOLICITATION CORPUS ===
-{doc_tree.corpus()[:300_000]}"""
+{_corpus.tail}"""
     return router.structured(
-        Tier.FRONTIER, system=SYSTEM, prompt=prompt, output_type=FormsPackage, stage="forms",
+        Tier.FRONTIER, system=SYSTEM, prompt=prompt, output_type=FormsPackage,
+        stage="forms", cache_prefix=_corpus.head,
     )
 
 

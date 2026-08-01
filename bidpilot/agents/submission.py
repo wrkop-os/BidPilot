@@ -13,6 +13,7 @@ import re
 from typing import Optional
 
 from ..models import DocTree, NoticeMetadata, SubmissionSheet
+from ..prompting import split_for_cache
 from ..routing import ModelRouter, Tier
 
 SYSTEM = """You extract proposal submission instructions from federal solicitations
@@ -30,6 +31,7 @@ with zero tolerance for guessing.
 def extract_submission(
     router: ModelRouter, metadata: NoticeMetadata, doc_tree: DocTree
 ) -> SubmissionSheet:
+    _corpus = split_for_cache(doc_tree.corpus(), 300000)
     prompt = f"""Extract the submission instructions.
 
 === SAM.GOV METADATA (cross-check only) ===
@@ -37,9 +39,10 @@ Response deadline per SAM.gov: {metadata.response_deadline or "unknown"}
 Points of contact: {metadata.points_of_contact}
 
 === SOLICITATION CORPUS ===
-{doc_tree.corpus()[:300_000]}"""
+{_corpus.tail}"""
     sheet = router.structured(
-        Tier.FRONTIER, system=SYSTEM, prompt=prompt, output_type=SubmissionSheet, stage="submission",
+        Tier.FRONTIER, system=SYSTEM, prompt=prompt, output_type=SubmissionSheet,
+        stage="submission", cache_prefix=_corpus.head,
     )
     # Deterministic cross-check: flag SAM-vs-solicitation deadline mismatch.
     if metadata.response_deadline and metadata.response_deadline[:10] not in sheet.deadline:

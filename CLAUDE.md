@@ -31,6 +31,7 @@ gracefully without it.
 |---|---|
 | Typed stage contracts (the blackboard) | `bidpilot/models.py`, `bidpilot/state.py` (`ProposalState`, `CheckpointStore`) |
 | Graph orchestrator, gates, halt/resume semantics | `bidpilot/orchestrator.py` — read `run()`'s docstring before touching resume logic |
+| Shared cached corpus prefix (prompt caching) | `bidpilot/prompting.py` `split_for_cache` — the cached head MUST stay byte-identical across stages or every call is a silent miss |
 | Model routing + audit of every LLM call | `bidpilot/routing.py` (FAST=haiku for volume, FRONTIER=opus for judgment), `bidpilot/audit.py` |
 | SAM.gov intake + amendment chain | `bidpilot/intake/` |
 | Offline intake (folder of documents, no API) | `bidpilot/intake/local.py` — `run --local DIR`; metadata is extracted deterministically or reported missing, never guessed |

@@ -302,6 +302,17 @@ def _docproc(ctx: RunContext) -> None:
     ctx.state.doc_tree = process_attachments(notice.files, notice.metadata.description_text)
     tree = ctx.state.doc_tree
 
+    # Stages cap how much corpus they send. Past that cap the tail is simply
+    # never seen, and until now nothing said so — an eligibility or submission
+    # answer drawn from the first 300K of a 900K solicitation looks identical
+    # to one drawn from all of it.
+    from .prompting import SMALLEST_STAGE_LIMIT, split_for_cache
+
+    oversize = split_for_cache(tree.corpus(), SMALLEST_STAGE_LIMIT)
+    if oversize.truncated:
+        ctx.console.print(f"  [yellow]{oversize.notice()}[/yellow]")
+        ctx.state.corpus_truncation_notice = oversize.notice()
+
     # Parsing-ladder final rung: vision-OCR image-only PDFs page-by-page.
     paths_by_name = {f.name: f.local_path for f in notice.files}
     for i, doc in enumerate(tree.docs):
