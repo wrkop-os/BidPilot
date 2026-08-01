@@ -180,9 +180,17 @@ saving nobody can see is one nobody will defend when a refactor breaks it. The
 break is silent — a single differing character makes every call a cache miss —
 so a test runs the whole pipeline and asserts every prefix hashes identically.
 
-The same split made a pre-existing problem visible: stages cap how much corpus
-they send, and past that cap the tail was simply never seen. A run whose corpus
-exceeds the tightest cap now says so, in the console and in
+The same split made a pre-existing problem visible and then fixed it. Stages
+cap how much corpus they send, and past that cap the text was simply never
+seen — by position, so a 900K-char package left Section L outside every cap.
+The stage that extracts submission instructions never read the section
+containing them.
+
+When a corpus will not fit, each stage's remaining budget now goes to the UCF
+sections it actually needs (`L`/`M` for submission, `K` for reps and certs,
+`C` for the SOW), and only then continues positionally, so nothing is lost
+against the old slice. Prioritization touches only the tail, never the shared
+cached head. A run that exceeds a cap still says so, in the console and in
 `REVIEW_CHECKLIST.md`.
 
 ### The in-house domain model

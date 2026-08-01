@@ -6,7 +6,7 @@ dates are extracted timezone-explicit and cross-checked against metadata."""
 from __future__ import annotations
 
 from ..models import Classification, DocTree, NoticeMetadata, NoticeType
-from ..prompting import split_for_cache
+from ..prompting import sections_for, split_for_cache
 from ..routing import ModelRouter, Tier
 
 SYSTEM = """You classify federal contract opportunity notices. Determine:
@@ -38,7 +38,8 @@ CONFIDENCE_ESCALATION_THRESHOLD = 0.75
 
 
 def classify(router: ModelRouter, metadata: NoticeMetadata, doc_tree: DocTree) -> Classification:
-    _corpus = split_for_cache(doc_tree.corpus(), 150000)
+    _corpus = split_for_cache(doc_tree.corpus(), 150000, doc_tree,
+                              sections_for("classify"))
     prompt = f"""Classify this opportunity.
 
 SAM.gov metadata:

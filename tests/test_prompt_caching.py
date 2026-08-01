@@ -235,3 +235,117 @@ def test_a_normal_sized_corpus_reports_nothing(tmp_path):
     ))
     assert state.corpus_truncation_notice is None
     assert "Corpus truncation" not in review_checklist(state)
+
+
+# -- section targeting for oversized corpora ---------------------------------
+
+
+def _oversized_tree():
+    from bidpilot.models import DocSection, DocTree, ParsedDoc
+
+    filler = "Background narrative about the incumbent program. " * 10_000
+    sec_l = "Proposals shall be submitted via PIEE no later than 2:00 PM ET.\n" * 50
+    sec_k = "The offeror shall complete the representation at FAR 52.204-24.\n" * 50
+    sec_m = "The Government will evaluate technical merit and price.\n" * 50
+    return DocTree(docs=[ParsedDoc(
+        name="rfp.pdf", kind="pdf", full_text=filler + sec_l + sec_k + sec_m,
+        sections=[
+            DocSection(section_id="L", title="Instructions", text=sec_l),
+            DocSection(section_id="K", title="Representations", text=sec_k),
+            DocSection(section_id="M", title="Evaluation", text=sec_m),
+        ])])
+
+
+def test_an_oversized_corpus_reaches_the_sections_the_stage_needs():
+    """Selecting by position is the worst possible rule: submission
+    instructions live in Section L, and a large package puts L well past any
+    prefix. Before this, the submission agent got 200K of background."""
+    from bidpilot.prompting import sections_for
+
+    tree = _oversized_tree()
+    corpus = tree.corpus()
+    assert len(corpus) > 300_000
+
+    submission = split_for_cache(corpus, 300_000, tree, sections_for("submission"))
+    assert submission.prioritized
+    assert "submitted via PIEE" in submission.tail          # Section L
+    assert "evaluate technical merit" in submission.tail    # Section M
+
+    forms = split_for_cache(corpus, 300_000, tree, sections_for("forms"))
+    assert "52.204-24" in forms.tail                        # Section K
+
+    # And a positional slice would NOT have reached them.
+    positional = corpus[CACHE_HEAD_CHARS:300_000]
+    assert "submitted via PIEE" not in positional
+
+
+def test_prioritizing_never_costs_recall_against_the_positional_slice():
+    """Targeted sections are far smaller than the budget. The remainder is
+    spent continuing through the corpus, so the stage sees at least as much as
+    it did before — the change is which text is guaranteed to survive."""
+    from bidpilot.prompting import sections_for
+
+    tree = _oversized_tree()
+    corpus = tree.corpus()
+    piece = split_for_cache(corpus, 300_000, tree, sections_for("eligibility"))
+    assert len(piece.head) + len(piece.tail) == 300_000
+    assert "CONTINUED CORPUS" in piece.tail
+
+
+def test_the_limit_is_the_limit_including_headers_and_separators():
+    from bidpilot.prompting import sections_for
+
+    tree = _oversized_tree()
+    corpus = tree.corpus()
+    for limit in (150_000, 200_000, 300_000):
+        piece = split_for_cache(corpus, limit, tree, sections_for("submission"))
+        assert len(piece.head) + len(piece.tail) <= limit, limit
+
+
+def test_targeting_does_not_disturb_the_shared_cache_head():
+    """Prioritization must only ever affect the tail. A per-stage head would
+    make every call a cache miss and silently undo the whole optimization."""
+    from bidpilot.prompting import sections_for
+
+    tree = _oversized_tree()
+    corpus = tree.corpus()
+    heads = {
+        split_for_cache(corpus, limit, tree, sections_for(stage)).head
+        for stage, limit in (("submission", 300_000), ("forms", 300_000),
+                             ("eligibility", 300_000), ("classify", 150_000),
+                             ("past_performance", 200_000))
+    }
+    assert len(heads) == 1
+
+
+def test_a_corpus_that_fits_is_never_reordered():
+    """Reordering a corpus the stage can see in full would only lose the
+    document's own structure for nothing."""
+    from bidpilot.prompting import sections_for
+
+    tree = _oversized_tree()
+    piece = split_for_cache(tree.corpus(), 10_000_000, tree, sections_for("submission"))
+    assert piece.prioritized is False
+    assert piece.head + piece.tail == tree.corpus()
+
+
+def test_unknown_sections_fall_back_to_the_positional_slice():
+    """A document with no UCF markers (many attachments have none) must still
+    get text, not an empty tail."""
+    from bidpilot.models import DocTree, ParsedDoc
+
+    tree = DocTree(docs=[ParsedDoc(name="att.pdf", kind="pdf",
+                                   full_text="z" * 400_000, sections=[])])
+    piece = split_for_cache(tree.corpus(), 300_000, tree, ("L", "M"))
+    assert piece.prioritized is False
+    assert len(piece.tail) > 0
+
+
+def test_the_notice_says_which_sections_were_chosen():
+    from bidpilot.prompting import sections_for
+
+    tree = _oversized_tree()
+    piece = split_for_cache(tree.corpus(), 300_000, tree, sections_for("submission"))
+    notice = piece.notice()
+    assert "UCF sections" in notice
+    assert "L" in notice and "M" in notice

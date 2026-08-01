@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from ..kb.store import KnowledgeBase
 from ..models import DocTree, NoticeMetadata, SectionDraft
-from ..prompting import split_for_cache
+from ..prompting import sections_for, split_for_cache
 from ..routing import ModelRouter, Tier
 
 SYSTEM = """You write a capability statement responding to a federal Sources
@@ -33,7 +33,8 @@ Hard rules (same as proposal writers):
 def write_capability_statement(
     router: ModelRouter, metadata: NoticeMetadata, doc_tree: DocTree, kb: KnowledgeBase
 ) -> SectionDraft:
-    _corpus = split_for_cache(doc_tree.corpus(), 300_000)
+    _corpus = split_for_cache(doc_tree.corpus(), 300_000, doc_tree,
+                              sections_for("capability"))
     draft = router.structured(
         Tier.FRONTIER,
         system=SYSTEM,

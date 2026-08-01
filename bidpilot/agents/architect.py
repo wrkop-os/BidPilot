@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from ..kb.store import KnowledgeBase
 from ..models import ComplianceMatrix, DocTree, WinStrategy
-from ..prompting import split_for_cache
+from ..prompting import sections_for, split_for_cache
 from ..routing import ModelRouter, Tier
 
 SYSTEM = """You are a capture strategist for a government contractor. From the
@@ -31,7 +31,8 @@ def build_strategy(
         for r in matrix.requirements
         if r.category.value == "evaluation"
     )
-    _corpus = split_for_cache(doc_tree.corpus(), 400000)
+    _corpus = split_for_cache(doc_tree.corpus(), 400000, doc_tree,
+                              sections_for("strategy"))
     prompt = f"""Develop the win strategy.
 
 === EVALUATION FACTORS (from the compliance matrix) ===

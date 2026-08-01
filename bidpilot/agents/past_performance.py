@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from ..kb.store import KnowledgeBase
 from ..models import ComplianceMatrix, DocTree, PastPerformanceSelection
-from ..prompting import split_for_cache
+from ..prompting import sections_for, split_for_cache
 from ..routing import ModelRouter, Tier
 
 SYSTEM = """You select and present past performance references for a federal
@@ -30,7 +30,8 @@ def select_past_performance(
         for r in matrix.requirements
         if "past performance" in r.verbatim_text.lower() or "reference" in r.verbatim_text.lower()
     )
-    _corpus = split_for_cache(doc_tree.corpus(), 200000)
+    _corpus = split_for_cache(doc_tree.corpus(), 200000, doc_tree,
+                              sections_for("past_performance"))
     prompt = f"""Select past performance references.
 
 === PAST-PERFORMANCE REQUIREMENTS ===

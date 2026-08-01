@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from ..kb.store import KnowledgeBase
 from ..models import DocTree, FormsPackage, NoticePackage
-from ..prompting import split_for_cache
+from ..prompting import sections_for, split_for_cache
 from ..routing import ModelRouter, Tier
 
 SYSTEM = """You are a contracts administrator preparing the forms package for a
@@ -32,7 +32,8 @@ def prepare_forms(
     amendments = "\n".join(
         f"- {a.notice_id} posted {a.posted_date or '?'}" for a in notice.amendment_history
     )
-    _corpus = split_for_cache(doc_tree.corpus(), 300000)
+    _corpus = split_for_cache(doc_tree.corpus(), 300000, doc_tree,
+                              sections_for("forms"))
     prompt = f"""Prepare the forms package.
 
 === AMENDMENT CHAIN (each needs acknowledgment) ===

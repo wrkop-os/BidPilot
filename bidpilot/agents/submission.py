@@ -13,7 +13,7 @@ import re
 from typing import Optional
 
 from ..models import DocTree, NoticeMetadata, SubmissionSheet
-from ..prompting import split_for_cache
+from ..prompting import sections_for, split_for_cache
 from ..routing import ModelRouter, Tier
 
 SYSTEM = """You extract proposal submission instructions from federal solicitations
@@ -31,7 +31,8 @@ with zero tolerance for guessing.
 def extract_submission(
     router: ModelRouter, metadata: NoticeMetadata, doc_tree: DocTree
 ) -> SubmissionSheet:
-    _corpus = split_for_cache(doc_tree.corpus(), 300000)
+    _corpus = split_for_cache(doc_tree.corpus(), 300000, doc_tree,
+                              sections_for("submission"))
     prompt = f"""Extract the submission instructions.
 
 === SAM.GOV METADATA (cross-check only) ===
