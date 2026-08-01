@@ -176,13 +176,13 @@ export BIDPILOT_REQ_MODEL=models/requirements.joblib
 bidpilot model status           # what it earned, and how it was measured
 ```
 
-Worst-of-six-splits recall is 0.991 on sub-topics it never saw in training. It
+Worst-of-fourteen-splits recall is 0.966 (mean 0.994) on sub-topics it never saw in training. It
 runs as a **recall net**: after the shredder, it re-reads the corpus and reports
 requirements the matrix missed, as candidates in `HUMAN_ACTIONS.md`. Nothing is
 auto-added and nothing is removed.
 
 `BIDPILOT_REQ_PREFILTER=1` flips it into a cost lever that cuts roughly 40% of
-the text before the LLM reads it — at the price of ~9 requirements per 1,000
+the text before the LLM reads it — at the price of ~34 requirements per 1,000
 dropped unrecoverably. Off by default. Read
 [`docs/DOMAIN_MODEL.md`](docs/DOMAIN_MODEL.md) before turning it on, including
 why a proposal-*drafting* model cannot be trained here.

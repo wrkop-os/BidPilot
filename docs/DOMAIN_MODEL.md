@@ -63,25 +63,24 @@ Local, in-process, deterministic, free. No network.
 
 ## Measured results
 
-Trained on 598 sentences across 78 template families. Every figure below is the
-**worst of six family splits**, not one:
+Trained on 87 template families. Every figure is the **worst of fourteen family
+splits**, with the mean alongside so the spread is visible:
 
-| Metric | Held-out (worst of 6) | Mean | Independent gold |
+| Metric | Worst of 14 | Mean | Independent gold |
 |---|---:|---:|---:|
-| Requirement recall | **0.991** | 0.997 | 1.000 |
-| Requirement precision | 0.851 | — | — |
-| Category accuracy | 0.670 | 0.808 | 1.000 |
-| Non-requirement text identified | 50% | — | — |
+| Requirement recall | **0.966** | 0.994 | 1.000 |
+| Requirement precision | 0.813 | — | — |
+| Category accuracy | 0.713 | 0.890 | 1.000 |
+| Non-requirement text identified | 29% | — | — |
 
 **Held-out families** are entire sub-topics the model never saw in training.
 **Independent gold** is `evals/corpus_demo/gold_matrix.csv` — eight rows written
 by hand for the eval harness, before this corpus existed and by a different
 process.
 
-The model is promoted **for screening only**. Category accuracy of 0.670 on the
-worst split did not clear its 0.80 gate — note that the *mean* (0.808) would
-have cleared it, which is precisely why the gate is on the worst split.
-Categorization stays with the LLM.
+Promoted **for screening only**. Category accuracy of 0.713 on the worst split
+does not clear its 0.80 gate, even though the mean of 0.890 would. The LLM
+keeps categorization.
 
 `ships_screen` and `ships_categorize` are independent flags, each earned against
 a gate declared before training. Passing one and failing the other is a narrower
@@ -105,15 +104,63 @@ recall came in at 0.895, under the gate. The errors are wildly asymmetric — a
 sentence wrongly kept costs the LLM one more line to read; a sentence wrongly
 dropped is a requirement that never reaches the compliance matrix.
 
-**The gate itself is measured across six splits, and reports the worst.** This
-is not belt-and-braces; it changed the answer. Measured across seeds, this
-corpus ranged **0.884–1.000** on recall and **0.698–0.871** on category
-accuracy. An earlier version of this model was promoted for *both* jobs off a
-single split — and would have shipped a categorizer that was right two times in
-three on the unlucky seed.
+**The gate itself is measured across fourteen splits, and reports the worst.**
+This is not belt-and-braces; it has changed the answer twice.
+
+First, an early version was promoted off a *single* split and would have
+shipped a categorizer that was right two times in three on an unlucky seed —
+the corpus ranged 0.884–1.000 on recall and 0.698–0.871 on category accuracy
+depending only on which families landed on the test side.
+
+Then the gate itself got overfit. After several rounds of corpus work against a
+fixed set of five extra seeds, the model cleared category accuracy on all six
+splits — and scored **0.699 on the first unseen seed tried**. Iterating against
+a small validation set turns it into something to fit rather than something to
+clear. The seed set is now fourteen wide, which makes the minimum a far more
+stable statistic; the cost is seconds of CPU.
 
 **Evaluation uses the rule that actually serves.** Scoring with argmax would
 measure a decision procedure the product does not use.
+
+## Two things that were tried and did not work
+
+Recorded because a negative result nobody writes down gets re-attempted.
+
+**Hand-designed contracting cues lost to plain TF-IDF.** The reasoning was
+sound: topic words do not transfer to a sub-topic held out of training, whereas
+the *shape* of an obligation should — who is acting (the Government evaluates
+vs the offeror submits), whether the object is an extent limit, a deadline, a
+standard artifact, or authored substance. Twenty-two cue features were built and
+measured against the baseline across all splits:
+
+| Features | Recall (worst) | Recall (mean) | Category (worst) | Category (mean) |
+|---|---:|---:|---:|---:|
+| TF-IDF only | **0.991** | **0.997** | 0.670 | **0.809** |
+| + cues, raw | 0.973 | 0.994 | 0.654 | 0.739 |
+| + cues, scaled | 0.955 | 0.985 | 0.677 | 0.748 |
+| + cues, down-weighted | 0.955 | 0.984 | **0.718** | 0.791 |
+
+Every variant cost recall, and the one that helped category accuracy bought it
+by trading away the metric that matters more. The module was deleted rather
+than left in as dead configuration.
+
+**Label noise was the real ceiling, not features.** A leave-one-family-out audit
+— train on every family but one, predict the one — found 9 of 65 families whose
+labels the model rejected as a majority when it had never seen them. Some were
+the model being wrong, but three were genuine label errors, all the same kind: a
+*format* requirement filed under something else.
+
+- `cover-letter` (administrative) contained "the cover letter shall not exceed
+  N pages"
+- `staffing-plan` (content) contained "resumes not to exceed N pages each"
+- `oral-presentation` (administrative) contained "shall not exceed N minutes"
+
+Fixing those three and adding nine families along the
+format/administrative/content boundaries moved worst-split category accuracy
+from 0.670 to 0.713 and the mean from 0.808 to 0.890 — on a gate that got
+harder at the same time. A test now enforces the rule that produced the fix:
+**any ceiling on how much you submit is a format requirement**, and no
+non-format family may contain one.
 
 ## The corpus, and its honest limits
 
@@ -227,6 +274,26 @@ binding language. The splitter now rejoins wrapped continuations while still
 respecting blank lines, bullets, numbered sub-paragraphs, and ALL-CAPS headings
 as genuine block boundaries. Clause numbers (`52.222-43`) and abbreviations
 (`Sec.`, `No.`) do not end sentences.
+
+## Cost of the recall net
+
+Running the model over the corpus is milliseconds; deciding what is *already*
+in the matrix was the expensive half. Comparing every sentence against every
+matrix entry is O(sentences x requirements) with set algebra inside the loop,
+and on a large solicitation (6,000 sentences, 600 requirements) that took 11
+seconds to produce 40 candidates.
+
+An inverted index over tokens replaced it: two texts sharing no token can
+neither contain one another nor clear the overlap bar, so they never need
+comparing. Same shape now runs in 0.86s. A randomized test checks the index
+against the naive scan it replaced — an optimization that changes behaviour is
+a bug, not a speedup.
+
+That check also surfaced a real defect: normalization was not collapsing
+whitespace, so a matrix entry reading `"the offeror  shall submit"` did not
+contain the same sentence re-extracted as `"the offeror shall submit"`. PDF
+extraction emits doubled spaces constantly, so requirements already captured
+were being reported as missed.
 
 ## Retraining
 

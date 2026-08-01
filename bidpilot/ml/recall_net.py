@@ -97,27 +97,74 @@ def split_sentences(text: str) -> list[str]:
 
 
 def _normalize(text: str) -> str:
-    return re.sub(r"[^a-z0-9 ]", "", text.lower())
+    """Casefold, drop punctuation, and COLLAPSE whitespace.
+
+    Collapsing matters: coverage is decided partly by substring containment,
+    and PDF extraction routinely emits doubled spaces and stray newlines. A
+    matrix entry reading "the offeror  shall submit" would not contain the same
+    sentence re-extracted as "the offeror shall submit", so a requirement
+    already captured would be reported as missed. Whitespace-only input
+    normalizes to the empty string rather than a run of spaces.
+    """
+    return " ".join(re.sub(r"[^a-z0-9 ]", "", (text or "").lower()).split())
+
+
+COVERAGE_OVERLAP = 0.75
+
+
+class _CoverageIndex:
+    """Which matrix entries could possibly cover a given sentence.
+
+    Comparing every sentence against every matrix entry is O(sentences x
+    requirements) with set algebra in the inner loop, and it showed: a large
+    solicitation (6,000 sentences, 600 requirements) took 11 seconds to
+    produce 40 candidates. An inverted index over tokens turns that into a
+    lookup, because two texts that share no token can neither contain one
+    another nor clear the overlap bar — so they never need comparing.
+    """
+
+    def __init__(self, texts: list[str]):
+        self.norms: list[str] = []
+        self.tokens: list[set[str]] = []
+        self.postings: dict[str, list[int]] = {}
+        for text in texts:
+            norm = _normalize(text)
+            if not norm:
+                continue
+            index = len(self.norms)
+            self.norms.append(norm)
+            words = set(norm.split())
+            self.tokens.append(words)
+            for word in words:
+                self.postings.setdefault(word, []).append(index)
+
+    def covers(self, sentence: str) -> bool:
+        norm = _normalize(sentence)
+        if not norm:
+            return True
+        words = set(norm.split())
+        if not words:
+            return True
+        # Only entries sharing at least one token can qualify. Containment
+        # implies sharing every token of the shorter text, so nothing that
+        # would have matched is skipped.
+        candidates: set[int] = set()
+        for word in words:
+            candidates.update(self.postings.get(word, ()))
+        for i in candidates:
+            existing = self.norms[i]
+            if norm in existing or existing in norm:
+                return True
+            other = self.tokens[i]
+            union = len(words | other)
+            if union and len(words & other) / union >= COVERAGE_OVERLAP:
+                return True
+        return False
 
 
 def _covered(sentence: str, covered_norms: list[str]) -> bool:
-    """Is this sentence already represented in the matrix?
-
-    Matrix entries are verbatim extracts, so containment either way is the
-    right test — the LLM may have captured a longer clause containing this
-    sentence, or a trimmed version of it.
-    """
-    norm = _normalize(sentence)
-    if not norm:
-        return True
-    for existing in covered_norms:
-        if norm in existing or existing in norm:
-            return True
-        # Near-miss on long extracts: high token overlap counts as covered.
-        a, b = set(norm.split()), set(existing.split())
-        if a and b and len(a & b) / len(a | b) >= 0.75:
-            return True
-    return False
+    """Kept for direct callers and tests; the batch path uses _CoverageIndex."""
+    return _CoverageIndex(covered_norms).covers(sentence)
 
 
 def find_missed(doc_tree, matrix, classifier: Optional[RequirementClassifier] = None,
@@ -131,8 +178,7 @@ def find_missed(doc_tree, matrix, classifier: Optional[RequirementClassifier] = 
     if classifier is None or not getattr(classifier, "can_screen", False):
         return []
 
-    covered_norms = [_normalize(r.verbatim_text) for r in (matrix.requirements or [])]
-    covered_norms = [n for n in covered_norms if n]
+    index = _CoverageIndex([r.verbatim_text for r in (matrix.requirements or [])])
 
     candidates: list[MissedCandidate] = []
     seen: set[str] = set()
@@ -147,7 +193,7 @@ def find_missed(doc_tree, matrix, classifier: Optional[RequirementClassifier] = 
             if not prediction.is_requirement:
                 continue
             key = _normalize(sentence)
-            if key in seen or _covered(sentence, covered_norms):
+            if key in seen or index.covers(sentence):
                 continue
             seen.add(key)
             candidates.append(MissedCandidate(

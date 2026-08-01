@@ -140,17 +140,19 @@ class RequirementClassifier:
 
         # Categorize only what survives the screen, and only if that job was
         # earned — one batched call rather than one per sentence.
-        survivors = [i for i, row in enumerate(screen_probas)
-                     if self._p_none(row, classes) < self.none_threshold]
+        survivors = {i for i, row in enumerate(screen_probas)
+                     if self._p_none(row, classes) < self.none_threshold}
         categories: dict[int, str] = {}
         if survivors and self.can_categorize and self._category is not None:
-            predicted = self._category.predict([texts[i] for i in survivors])
-            categories = dict(zip(survivors, (str(c) for c in predicted)))
+            ordered = sorted(survivors)
+            predicted = self._category.predict([texts[i] for i in ordered])
+            categories = dict(zip(ordered, (str(c) for c in predicted)))
 
         out: list[Prediction] = []
         for i, row in enumerate(screen_probas):
             p_none = round(self._p_none(row, classes), 4)
-            if i not in set(survivors):
+            # `survivors` is a set: rebuilding it per row made this quadratic.
+            if i not in survivors:
                 out.append(Prediction(False, "none", p_none, "model", p_none))
             else:
                 out.append(Prediction(
@@ -189,7 +191,16 @@ def reset_cache() -> None:
 def _features():
     """Word + character n-grams. Solicitation language is distinguished as much
     by morphology ('shall', '12-point', 'not to exceed') as by vocabulary, and
-    character n-grams survive the OCR damage this corpus routinely carries."""
+    character n-grams survive the OCR damage this corpus routinely carries.
+
+    Hand-designed contracting cues (who is acting, extent limits, deadline
+    vocabulary, authoring verbs) were tried here and MEASURABLY LOST across all
+    six splits: worst-split recall fell 0.991 -> 0.955 raw, and category
+    accuracy only rose by trading it away. The plausible story -- that cues
+    describing the shape of an obligation generalize to unseen sub-topics
+    better than topic words -- did not survive contact with the numbers. See
+    docs/DOMAIN_MODEL.md.
+    """
     from sklearn.feature_extraction.text import TfidfVectorizer
     from sklearn.pipeline import make_union
 

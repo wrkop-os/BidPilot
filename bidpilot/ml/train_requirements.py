@@ -97,7 +97,13 @@ CALIBRATION_RECALL_TARGET = 0.99
 # Family splits the gate is evaluated over, in addition to the primary one.
 # Gating on the minimum makes the promotion decision robust to which
 # sub-topics happen to land on the test side.
-EVAL_SPLIT_SEEDS = (23, 47, 61, 83, 97)
+#
+# There used to be five. Iterating the corpus against a small fixed set turned
+# the gate into something to overfit rather than clear: after several rounds of
+# corpus work the model passed all six splits on category accuracy, and then
+# scored 0.699 on the first unseen seed tried. The minimum over a dozen splits
+# is a far more stable statistic, and the cost is seconds of CPU.
+EVAL_SPLIT_SEEDS = (23, 47, 61, 83, 97, 101, 137, 149, 163, 179, 191, 211, 223)
 
 
 def choose_none_threshold(pipeline, rows: list[LabeledSentence],

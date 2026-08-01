@@ -101,7 +101,7 @@ _TEMPLATES: list[tuple[str, str, list[str]]] = [
     ("staffing-plan", "content", [
         "The offeror shall provide a staffing plan identifying labor categories and hours by task.",
         "Submit a staffing approach describing how key personnel will be recruited and retained.",
-        "The offeror shall identify all key personnel and provide resumes not to exceed {n} pages each.",
+        "The offeror shall identify all key personnel and provide a resume for each.",
         "Provide a plan for maintaining staffing levels throughout the period of performance.",
     ]),
     ("past-performance", "content", [
@@ -301,7 +301,8 @@ _TEMPLATES: list[tuple[str, str, list[str]]] = [
     ]),
     ("cover-letter", "administrative", [
         "The proposal shall include a transmittal letter signed by an official authorized to bind the offeror.",
-        "The cover letter shall not exceed {n} pages and shall not contain technical content.",
+        "The transmittal letter shall identify the authorized negotiator for the offeror.",
+        "The cover letter shall be signed by a corporate officer.",
     ]),
     ("site-visit", "administrative", [
         "Offerors intending to attend the site visit shall register by {date}.",
@@ -311,7 +312,7 @@ _TEMPLATES: list[tuple[str, str, list[str]]] = [
     ("oral-presentation", "administrative", [
         "Offerors shall be prepared to deliver an oral presentation within {n} days of notification.",
         "Oral presentation slides shall be submitted {n} days prior to the presentation.",
-        "The oral presentation shall not exceed {n} minutes.",
+        "The Government will schedule presentations in the order proposals were received.",
     ]),
     ("proposal-withdrawal", "administrative", [
         "Proposals may be withdrawn by written notice received prior to the time set for receipt.",
@@ -387,6 +388,7 @@ _TEMPLATES: list[tuple[str, str, list[str]]] = [
         "Oral presentation slides shall not exceed {n} slides.",
         "The briefing shall be limited to {n} charts, excluding the title slide.",
         "Slides shall be submitted in PowerPoint and shall not exceed {n} pages when printed.",
+        "The oral presentation shall not exceed {n} minutes.",
     ]),
     ("word-limits", "format", [
         "The executive summary shall not exceed {n} words.",
@@ -510,6 +512,60 @@ _TEMPLATES: list[tuple[str, str, list[str]]] = [
     ("insurance-bonding", "administrative", [
         "The offeror shall provide evidence of insurance prior to award.",
         "The successful offeror shall furnish a performance bond within {n} days of award.",
+        "Certificates of insurance shall name the Government as an interested party.",
+    ]),
+
+    # ---- boundary coverage --------------------------------------------------
+    # The leave-one-family-out audit showed the residual errors are not spread
+    # evenly: they concentrate on format<->administrative and
+    # content<->administrative, where the verb is identical ("shall submit")
+    # and only the OBJECT distinguishes them. These families sit deliberately
+    # on those boundaries so the model sees the distinction more than once.
+    ("volume-order", "format", [
+        "Volumes shall be submitted in the order listed in Section {sec}.",
+        "The table of contents shall list every subfactor heading.",
+        "Each volume shall begin with a table of contents.",
+        "Section headings shall match the numbering used in Section {sec}.",
+    ]),
+    ("cross-reference-index", "format", [
+        "The offeror shall provide a compliance matrix cross-referencing each requirement to a page number.",
+        "A cross-reference index shall map Section L instructions to proposal locations.",
+        "Page references in the compliance matrix shall be exact.",
+    ]),
+    ("assembly-instructions", "format", [
+        "Do not include marketing material in any volume.",
+        "The technical volume shall contain no pricing information.",
+        "Pricing shall appear only in the price volume.",
+        "Classified information shall not be included in the proposal.",
+    ]),
+    ("debriefing-request", "administrative", [
+        "Requests for debriefing shall be submitted in writing within {n} days of notification.",
+        "Unsuccessful offerors may request a debriefing in accordance with FAR 15.506.",
+        "Debriefing requests shall be addressed to the Contracting Officer.",
+    ]),
+    ("questionnaire-distribution", "administrative", [
+        "The offeror shall send the past performance questionnaire directly to each reference.",
+        "References shall return questionnaires to the Contracting Officer, not to the offeror.",
+        "Questionnaires received after {date} may not be considered.",
+    ]),
+    ("authorized-negotiator", "administrative", [
+        "The offeror shall identify individuals authorized to negotiate on its behalf.",
+        "Provide the name and telephone number of the person authorized to sign the contract.",
+    ]),
+    ("corporate-experience", "content", [
+        "The offeror shall describe its corporate experience performing work of similar scope.",
+        "Describe the offeror's experience supporting federal customers in this mission area.",
+        "The offeror shall demonstrate understanding of the operating environment.",
+    ]),
+    ("quality-metrics", "content", [
+        "The offeror shall propose performance metrics for each service area.",
+        "Describe how service level attainment will be measured and reported.",
+        "The offeror shall explain its approach to root cause analysis of missed metrics.",
+    ]),
+    ("retention-approach", "content", [
+        "The offeror shall describe its approach to retaining qualified personnel.",
+        "Describe compensation and career development practices that support retention.",
+        "Explain how turnover will be minimized during the period of performance.",
     ]),
 ]
 

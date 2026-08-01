@@ -388,3 +388,125 @@ def test_the_gate_is_measured_across_several_splits_not_one():
     # The reported figure is the worst case, so it cannot exceed the mean.
     assert held["requirement_recall"] <= held["requirement_recall_mean"] + 1e-9
     assert held["requirement_recall"] >= 0.95
+
+
+# -- coverage index: correctness and cost -------------------------------------
+
+
+def test_the_coverage_index_matches_a_linear_scan_exactly():
+    """The index is an optimization. An optimization that changes behaviour is
+    a bug, so it is checked against the naive implementation it replaced."""
+    import random
+
+    from bidpilot.ml.recall_net import COVERAGE_OVERLAP, _CoverageIndex, _normalize
+
+    def linear(sentence, norms):
+        norm = _normalize(sentence)
+        if not norm:
+            return True
+        for existing in norms:
+            if norm in existing or existing in norm:
+                return True
+            a, b = set(norm.split()), set(existing.split())
+            if a and b and len(a & b) / len(a | b) >= COVERAGE_OVERLAP:
+                return True
+        return False
+
+    rng = random.Random(7)
+    vocab = ("offeror shall submit provide describe plan pages volume price "
+             "technical past performance deadline portal insurance bond").split()
+    def sentence():
+        return " ".join(rng.choice(vocab) for _ in range(rng.randint(3, 14)))
+
+    for _ in range(120):
+        matrix = [sentence() for _ in range(rng.randint(1, 20))]
+        norms = [n for n in (_normalize(m) for m in matrix) if n]
+        index = _CoverageIndex(matrix)
+        for _ in range(5):
+            probe = sentence()
+            assert index.covers(probe) == linear(probe, norms), probe
+
+
+def test_normalization_collapses_whitespace():
+    """PDF extraction emits doubled spaces and stray newlines. Without
+    collapsing, a requirement already in the matrix reads as missed because
+    substring containment fails on the spacing alone."""
+    from bidpilot.ml.recall_net import _CoverageIndex, _normalize
+
+    assert _normalize("The  offeror\n shall   submit.") == "the offeror shall submit"
+    assert _normalize("   ") == ""
+    index = _CoverageIndex(["The offeror  shall   submit a plan."])
+    assert index.covers("The offeror shall submit a plan.") is True
+
+
+def test_the_recall_net_stays_fast_on_a_full_size_solicitation():
+    """A naive scan cost 11 seconds on this shape and returned 40 candidates.
+    The guard is loose on purpose — it catches a return to quadratic
+    behaviour, not ordinary machine-speed variation."""
+    import time
+
+    from bidpilot.ml.recall_net import _CoverageIndex
+
+    sentences = [f"The offeror shall provide alpha{i} beta{i} gamma{i} in the SOW."
+                 for i in range(4000)]
+    index = _CoverageIndex([f"Unrelated requirement {i} concerning zzz{i}." for i in range(400)])
+    started = time.time()
+    hits = sum(1 for s in sentences if index.covers(s))
+    elapsed = time.time() - started
+    assert hits == 0
+    assert elapsed < 3.0, f"coverage check took {elapsed:.1f}s — quadratic again?"
+
+
+def test_predictions_do_not_rebuild_the_survivor_set_per_row():
+    """`i not in set(survivors)` inside the loop made batch prediction
+    quadratic. Batch and single-item prediction must agree, and batch must
+    scale linearly."""
+    import time
+
+    if not ARTIFACT.exists():
+        pytest.skip("no trained artifact")
+    requirements_model.reset_cache()
+    classifier = requirements_model.load(str(ARTIFACT))
+    assert classifier is not None
+
+    texts = [f"The offeror shall submit document {i} for review." for i in range(3000)]
+    started = time.time()
+    batch = classifier.predict_many(texts)
+    elapsed = time.time() - started
+    assert len(batch) == len(texts)
+    assert elapsed < 5.0, f"predict_many took {elapsed:.1f}s"
+    # Batch must agree with the one-at-a-time path.
+    for i in (0, 17, 2999):
+        single = classifier.predict(texts[i])
+        assert single.is_requirement == batch[i].is_requirement
+        assert single.category == batch[i].category
+
+
+# -- gate integrity -----------------------------------------------------------
+
+
+@pytest.mark.skipif(not ARTIFACT.exists(), reason="no trained artifact")
+def test_the_gate_uses_enough_splits_to_resist_being_overfit():
+    """Iterating the corpus against five splits produced a model that passed
+    all of them on category accuracy and then scored 0.699 on the first unseen
+    seed. The minimum over a dozen splits is a far more stable statistic."""
+    metrics = json.loads(ARTIFACT.with_suffix(".metrics.json").read_text())
+    assert metrics["held_out"]["splits_evaluated"] >= 10
+
+
+def test_the_seed_corpus_has_no_family_with_mixed_obligations():
+    """A page limit inside an `administrative` family, or an extent limit
+    inside a `content` one, is a label error — and the leave-one-family-out
+    audit showed those were the families the model most often 'got wrong'."""
+    from bidpilot.ml.corpus import _TEMPLATES
+
+    extent = ("not to exceed", "shall not exceed", "limited to", "no more than")
+    for family, category, phrasings in _TEMPLATES:
+        if category in ("format", "none"):
+            continue
+        for phrasing in phrasings:
+            lowered = phrasing.lower()
+            assert not any(cue in lowered for cue in extent), (
+                f"{family} ({category}) contains an extent limit, which is a "
+                f"format requirement: {phrasing!r}"
+            )
