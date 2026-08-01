@@ -32,7 +32,8 @@ from .requirements_model import (
     CATEGORIZE_GATES,
     DEFAULT_NONE_THRESHOLD,
     SCREEN_GATES,
-    build_pipeline,
+    build_category_pipeline,
+    build_screen_pipeline,
 )
 
 
@@ -93,6 +94,11 @@ def _predict_with_threshold(pipeline, texts: list[str], threshold: float) -> lis
 # guarantees missing it in the only measurement that counts.
 CALIBRATION_RECALL_TARGET = 0.99
 
+# Family splits the gate is evaluated over, in addition to the primary one.
+# Gating on the minimum makes the promotion decision robust to which
+# sub-topics happen to land on the test side.
+EVAL_SPLIT_SEEDS = (23, 47, 61, 83, 97)
+
 
 def choose_none_threshold(pipeline, rows: list[LabeledSentence],
                           target_recall: float,
@@ -121,12 +127,22 @@ def choose_none_threshold(pipeline, rows: list[LabeledSentence],
 
 
 def evaluate(pipeline, rows: list[LabeledSentence],
-             threshold: float = DEFAULT_NONE_THRESHOLD) -> dict:
+             threshold: float = DEFAULT_NONE_THRESHOLD,
+             category_pipeline=None) -> dict:
     if not rows:
         return {}
     texts = [r.text for r in rows]
     truth = [r.category for r in rows]
     predicted = _predict_with_threshold(pipeline, texts, threshold)
+    if category_pipeline is not None:
+        # Mirror serving: the screen decides survival, the category model
+        # labels the survivors. Scoring the screen's own category guess would
+        # measure a model the product no longer consults.
+        survivors = [i for i, p in enumerate(predicted) if p != "none"]
+        if survivors:
+            labels = category_pipeline.predict([texts[i] for i in survivors])
+            for i, label in zip(survivors, labels):
+                predicted[i] = str(label)
 
     # The gate metric: of the sentences that ARE requirements, how many did we
     # keep? A miss here is an unaddressed requirement.
@@ -214,24 +230,56 @@ def train(out_path: Path, runs_root: Optional[Path] = None,
     fold_thresholds: list[float] = []
     for fold_seed in (29, 31, 37, 41, 43):
         fit_rows, calib_rows = split_by_family(train_rows, holdout=0.25, seed=fold_seed)
-        fold_pipeline = build_pipeline()
+        fold_pipeline = build_screen_pipeline()
         fold_pipeline.fit([r.text for r in fit_rows], [r.category for r in fit_rows])
         fold_thresholds.append(choose_none_threshold(fold_pipeline, calib_rows, target))
     threshold = max(fold_thresholds)
 
-    # Refit on all training data now that the operating point is fixed.
-    pipeline = build_pipeline()
+    # Refit the screen on all training data now that the operating point is
+    # fixed, and fit the category model on the REQUIREMENT rows only.
+    pipeline = build_screen_pipeline()
     pipeline.fit([r.text for r in train_rows], [r.category for r in train_rows])
+
+    train_reqs = [r for r in train_rows if r.category != "none"]
+    category_pipeline = build_category_pipeline()
+    category_pipeline.fit([r.text for r in train_reqs],
+                          [r.category for r in train_reqs])
     train_seconds = round(time.time() - started, 2)
 
-    held_out = evaluate(pipeline, test_rows, threshold)
     gold_path = Path(__file__).resolve().parents[2] / "evals" / "corpus_demo" / "gold_matrix.csv"
-    gold = evaluate(pipeline, load_gold(gold_path), threshold)
+    primary = evaluate(pipeline, test_rows, threshold, category_pipeline)
+    gold = evaluate(pipeline, load_gold(gold_path), threshold, category_pipeline)
+
+    # Gate on the WORST split, not a single lucky one.
+    #
+    # With a few dozen families, which ones land on the test side swings the
+    # result hard: measured across six splits this corpus ranged 0.884-1.000
+    # on recall and 0.698-0.871 on category accuracy. Promoting off one split
+    # would ship a model whose headline number was an artifact of the seed.
+    per_split = [primary]
+    for split_seed in EVAL_SPLIT_SEEDS:
+        alt_train, alt_test = split_by_family(rows, seed=split_seed)
+        alt_screen = build_screen_pipeline()
+        alt_screen.fit([r.text for r in alt_train], [r.category for r in alt_train])
+        alt_reqs = [r for r in alt_train if r.category != "none"]
+        alt_category = build_category_pipeline()
+        alt_category.fit([r.text for r in alt_reqs], [r.category for r in alt_reqs])
+        per_split.append(evaluate(alt_screen, alt_test, threshold, alt_category))
+
+    held_out = dict(primary)
+    for metric in ("requirement_recall", "category_accuracy",
+                   "requirement_precision", "screened_out_rate"):
+        values = [m[metric] for m in per_split if metric in m]
+        if values:
+            held_out[metric] = round(min(values), 4)
+            held_out[f"{metric}_mean"] = round(sum(values) / len(values), 4)
+    held_out["splits_evaluated"] = len(per_split)
+    held_out["aggregation"] = "worst across splits"
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     import joblib
 
-    joblib.dump(pipeline, out_path)
+    joblib.dump({"screen": pipeline, "category": category_pipeline}, out_path)
     digest = hashlib.sha256(out_path.read_bytes()).hexdigest()
 
     # Gates are checked against the HELD-OUT families, not the training fit
@@ -307,10 +355,13 @@ def main(argv: Optional[list[str]] = None) -> int:
           f"({corpus['by_source']})")
     print(f"split:  {corpus['train_rows']} train / {corpus['test_rows']} test "
           f"— {corpus['split']}")
-    print(f"held-out families: recall={held['requirement_recall']:.3f} "
+    print(f"held-out families (WORST of {held['splits_evaluated']} splits): "
+          f"recall={held['requirement_recall']:.3f} "
           f"precision={held['requirement_precision']:.3f} "
           f"category_acc={held['category_accuracy']:.3f} "
-          f"screened_out={held['screened_out_rate']:.3f}  (n={held['n']})")
+          f"screened_out={held['screened_out_rate']:.3f}")
+    print(f"                   mean: recall={held['requirement_recall_mean']:.3f} "
+          f"category_acc={held['category_accuracy_mean']:.3f}")
     gold = record["gold_independent"]
     if gold:
         print(f"independent gold:  recall={gold['requirement_recall']:.3f} "

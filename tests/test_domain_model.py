@@ -286,3 +286,105 @@ def test_the_promoted_artifact_reports_what_it_earned():
     assert "grouped by template family" in metrics["corpus"]["split"]
     assert 0.0 < metrics["none_threshold"] <= 1.0
     assert metrics["gold_independent"]["n"] > 0
+
+
+# -- wrapped text (the shape real documents arrive in) ------------------------
+
+
+def test_wrapped_lines_are_rejoined_into_whole_sentences():
+    """PDF and DOCX extraction wraps constantly. Splitting on newlines alone
+    turns one requirement into fragments — each too short to classify, and none
+    quotable as verbatim binding language."""
+    text = ("The offeror shall provide Tier 1 and Tier 2 service desk support for\n"
+            "approximately 1,200 users, including incident intake and triage.\n"
+            "Period of performance: one base year plus\n"
+            "four 12-month option periods.\n")
+    sentences = recall_net.split_sentences(text)
+    assert any("incident intake and triage" in s and "Tier 1" in s for s in sentences)
+    assert any("base year plus four 12-month" in s for s in sentences)
+    assert not any(s.endswith("support for") for s in sentences)
+
+
+def test_headings_and_bullets_still_start_new_blocks():
+    text = ("SECTION L INSTRUCTIONS\n"
+            "The offeror shall submit three copies.\n"
+            "- Volume I is limited to 20 pages\n"
+            "- Volume II is limited to 10 pages\n")
+    sentences = recall_net.split_sentences(text)
+    joined = " || ".join(sentences)
+    assert "Volume I is limited to 20 pages" in joined
+    assert "Volume II is limited to 10 pages" in joined
+    # The two bullets must not be welded together.
+    assert not any("20 pages - Volume II" in s for s in sentences)
+
+
+# -- the prefilter (opt-in cost lever) ----------------------------------------
+
+
+def test_prefilter_is_off_unless_explicitly_enabled(monkeypatch):
+    """Invariant 4 prefers recall over cost on this stage, so trading recall
+    for tokens must never happen by default."""
+    from bidpilot.ml import prefilter
+
+    monkeypatch.delenv(prefilter.ENV_ENABLED, raising=False)
+    assert prefilter.enabled() is False
+    text = "The offeror shall submit a staffing plan. Attachment 3 is the wage determination."
+    result = prefilter.prefilter_text(text)
+    assert result.text == text                 # untouched
+    assert result.dropped_sentences == 0
+
+
+@pytest.mark.skipif(not ARTIFACT.exists(), reason="no trained artifact")
+def test_prefilter_shrinks_text_and_keeps_the_requirements(monkeypatch):
+    from bidpilot.ml import prefilter
+
+    monkeypatch.setenv(prefilter.ENV_ENABLED, "1")
+    monkeypatch.setenv(requirements_model.ENV_MODEL_PATH, str(ARTIFACT))
+    requirements_model.reset_cache()
+
+    text = (
+        "The offeror shall submit Volume I not to exceed 20 pages.\n"
+        "Attachment 3 contains the wage determination.\n"
+        "The Government will evaluate technical merit and price.\n"
+        "Figure 2 depicts the current system architecture.\n"
+        "Proposals are due at 2:00 PM Eastern Time on March 14, 2027.\n"
+    )
+    result = prefilter.prefilter_text(text)
+    assert result.dropped_sentences > 0
+    assert result.chars_after < result.chars_before
+    # Every binding sentence must survive.
+    assert "not to exceed 20 pages" in result.text
+    assert "2:00 PM Eastern" in result.text
+    assert "evaluate technical merit" in result.text
+    assert "prefilter:" in result.summary()
+
+
+@pytest.mark.skipif(not ARTIFACT.exists(), reason="no trained artifact")
+def test_the_prefilter_notice_states_the_measured_risk(monkeypatch):
+    """Enabling this trades recall for tokens; the operator must be told how
+    much recall, in requirements, not adjectives."""
+    from bidpilot.ml import prefilter
+
+    monkeypatch.setenv(requirements_model.ENV_MODEL_PATH, str(ARTIFACT))
+    requirements_model.reset_cache()
+    notice = prefilter.prefilter_notice()
+    assert "in every 1,000" in notice
+    assert "cannot be recovered" in notice
+    assert prefilter.ENV_ENABLED in notice
+
+
+# -- gate robustness ----------------------------------------------------------
+
+
+@pytest.mark.skipif(not ARTIFACT.exists(), reason="no trained artifact")
+def test_the_gate_is_measured_across_several_splits_not_one():
+    """A single family split swung recall from 0.884 to 1.000 on this corpus.
+    Promoting off one split would ship a headline number that was an artifact
+    of the seed."""
+    metrics = json.loads(ARTIFACT.with_suffix(".metrics.json").read_text())
+    held = metrics["held_out"]
+    assert held["splits_evaluated"] >= 3
+    assert held["aggregation"] == "worst across splits"
+    # The reported figure is the worst case, so it cannot exceed the mean.
+    assert held["requirement_recall"] <= held["requirement_recall_mean"] + 1e-9
+    assert held["requirement_recall"] >= 0.95

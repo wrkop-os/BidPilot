@@ -129,6 +129,19 @@ def main(argv: list[str] | None = None) -> int:
     serve_p.add_argument("--port", type=int, default=8400)
     serve_p.add_argument("--out", default="runs")
 
+    model_p = sub.add_parser("model", help="The in-house domain model: train, inspect, evaluate")
+    model_sub = model_p.add_subparsers(dest="model_command", required=True)
+    m_train = model_sub.add_parser("train", help="Train the requirement model from the corpus (+ captured runs)")
+    m_train.add_argument("--out", default="models/requirements.joblib")
+    m_train.add_argument("--runs", default=None, help="Mine captured requirements from this run root")
+    m_train.add_argument("--per-phrasing", type=int, default=6)
+    m_train.add_argument("--seed", type=int, default=17)
+    m_status = model_sub.add_parser("status", help="What the configured model earned, and how it was measured")
+    m_status.add_argument("--model", default=None, help="Artifact path (default: $BIDPILOT_REQ_MODEL)")
+    m_try = model_sub.add_parser("try", help="Classify a sentence (or stdin) with the local model")
+    m_try.add_argument("text", nargs="*", help="Sentence to classify; omit to read stdin")
+    m_try.add_argument("--model", default=None)
+
     mle_p = sub.add_parser("mle", help="MLE workflows: collect run captures, export fine-tuning data")
     mle_sub = mle_p.add_subparsers(dest="mle_command", required=True)
     mle_c = mle_sub.add_parser("collect", help="Scan run dirs for training captures + human-preference pairs")
@@ -153,6 +166,8 @@ def main(argv: list[str] | None = None) -> int:
         return _outcome(args)
     if args.command == "serve":
         return _serve(args)
+    if args.command == "model":
+        return _model(args)
     if args.command == "mle":
         return _mle(args)
     if args.command == "init-kb":
@@ -796,6 +811,89 @@ def _doctor(args) -> int:
     console.print("[green]doctor: all required checks passed[/green]" if ok
                   else "[red]doctor: required checks failed[/red]")
     return 0 if ok else 1
+
+
+def _model(args) -> int:
+    """The in-house domain model: train it, inspect what it earned, try it."""
+    import os
+
+    from .ml import requirements_model
+    from .ml.prefilter import ENV_ENABLED, enabled, prefilter_notice
+
+    if args.model_command == "train":
+        from .ml.train_requirements import main as train_main
+
+        argv = ["--out", args.out, "--per-phrasing", str(args.per_phrasing),
+                "--seed", str(args.seed)]
+        if args.runs:
+            argv += ["--runs", args.runs]
+        return train_main(argv)
+
+    path = getattr(args, "model", None) or os.environ.get(
+        requirements_model.ENV_MODEL_PATH)
+    if not path:
+        console.print(
+            f"[yellow]No model configured.[/yellow] Train one with "
+            f"`bidpilot model train`, then set "
+            f"{requirements_model.ENV_MODEL_PATH}=models/requirements.joblib"
+        )
+        return 1
+    requirements_model.reset_cache()
+    classifier = requirements_model.load(path)
+    if classifier is None:
+        console.print(
+            f"[red]{path} is not usable.[/red] Either there is no promotion "
+            "record beside it, it failed its screening gate, or its hash does "
+            "not match the record. Re-train with `bidpilot model train`."
+        )
+        return 1
+
+    if args.model_command == "status":
+        metrics = classifier.metrics
+        held = metrics.get("held_out") or {}
+        corpus = metrics.get("corpus") or {}
+        gold = metrics.get("gold_independent") or {}
+        console.print(f"[bold]{Path(path).name}[/bold]  trained {metrics.get('trained_at')}")
+        console.print(f"  screen:     {'[green]promoted[/green]' if classifier.can_screen else '[red]no[/red]'}")
+        console.print(f"  categorize: {'[green]promoted[/green]' if classifier.can_categorize else '[yellow]no — LLM keeps that job[/yellow]'}")
+        console.print(f"  operating point: drop a sentence only when P(not a "
+                      f"requirement) >= {classifier.none_threshold}")
+        console.print("")
+        console.print(f"  corpus: {corpus.get('total')} rows / {corpus.get('families')} "
+                      f"families {corpus.get('by_source')}")
+        console.print(f"  split:  {corpus.get('split')}")
+        agg = held.get("aggregation", "single split")
+        console.print(f"  held-out ({agg}, {held.get('splits_evaluated', 1)} splits):")
+        console.print(f"     requirement recall  {held.get('requirement_recall')}"
+                      f"   (mean {held.get('requirement_recall_mean')})")
+        console.print(f"     category accuracy   {held.get('category_accuracy')}"
+                      f"   (mean {held.get('category_accuracy_mean')})")
+        console.print(f"     non-requirement text identified  {held.get('screened_out_rate')}")
+        if gold:
+            console.print(f"  independent gold (n={gold.get('n')}): "
+                          f"recall {gold.get('requirement_recall')}, "
+                          f"category {gold.get('category_accuracy')}")
+        console.print("")
+        if enabled():
+            console.print(f"[yellow]{prefilter_notice()}[/yellow]")
+        else:
+            console.print(f"  prefilter: off (set {ENV_ENABLED}=1 to trade recall "
+                          "for tokens — read docs/DOMAIN_MODEL.md first)")
+        return 0
+
+    # try
+    text = " ".join(args.text).strip() if args.text else sys.stdin.read().strip()
+    if not text:
+        console.print("[red]Nothing to classify.[/red]")
+        return 1
+    from .ml.recall_net import split_sentences
+
+    for sentence in split_sentences(text) or [text]:
+        p = classifier.predict(sentence)
+        verdict = "[green]REQUIREMENT[/green]" if p.is_requirement else "[dim]not binding[/dim]"
+        category = f" ({p.category})" if p.category else ""
+        console.print(f"  {verdict}{category}  p_not={p.p_none:.3f}  {sentence[:90]}")
+    return 0
 
 
 def _interview(args) -> int:

@@ -14,6 +14,8 @@ python -m pytest -q -n auto --dist loadfile   # same suite ~2x faster locally (s
 python -m pytest tests/test_rates.py::test_wrap_rate -q   # single test
 bidpilot doctor                  # env checks (--network pings the SAM API)
 bidpilot serve --port 8400       # web UI: paste listing URL, gates in browser
+bidpilot model train             # train the in-house requirement model (~20s, CPU)
+bidpilot model status            # what it earned and how it was measured
 bidpilot mle collect             # sweep runs for captured training data
 bidpilot kb-health --kb kb.pro   # KB quality gate (--strict exits 1 on issues)
 bidpilot kb-gaps --out runs      # what runs needed that the KB could not supply

@@ -111,42 +111,56 @@ class RequirementClassifier:
 
         self.model_path = Path(model_path)
         self.metrics = _verify_promoted(self.model_path)
-        self._pipeline = joblib.load(self.model_path)
+        bundle = joblib.load(self.model_path)
+        if isinstance(bundle, dict):
+            self._screen = bundle["screen"]
+            self._category = bundle.get("category")
+        else:                       # single-model artifact from an older train
+            self._screen = bundle
+            self._category = None
         self.none_threshold = float(
             self.metrics.get("none_threshold") or DEFAULT_NONE_THRESHOLD)
         # Which jobs this artifact actually earned.
         self.can_screen = bool(self.metrics.get("ships_screen"))
         self.can_categorize = bool(self.metrics.get("ships_categorize"))
 
-    def _decide(self, proba, classes) -> Prediction:
+    def _p_none(self, proba, classes) -> float:
         index = {c: i for i, c in enumerate(classes)}
-        p_none = float(proba[index["none"]]) if "none" in index else 0.0
-        # Only a confident "none" removes a sentence from the LLM's view.
-        if p_none >= self.none_threshold:
-            return Prediction(False, "none", round(p_none, 4), "model", round(p_none, 4))
-        best_req = max((c for c in classes if c != "none"),
-                       key=lambda c: proba[index[c]], default="content")
-        return Prediction(
-            is_requirement=True,
-            category=str(best_req) if self.can_categorize else "",
-            confidence=round(float(proba[index[best_req]]), 4),
-            method="model",
-            p_none=round(p_none, 4),
-        )
+        return float(proba[index["none"]]) if "none" in index else 0.0
 
     def predict(self, text: str) -> Prediction:
-        text = (text or "").strip()
-        if not text:
-            return Prediction(False, "none", 1.0, "model", 1.0)
-        proba = self._pipeline.predict_proba([text])[0]
-        return self._decide(proba, list(self._pipeline.classes_))
+        return self.predict_many([text])[0] if (text or "").strip() else \
+            Prediction(False, "none", 1.0, "model", 1.0)
 
     def predict_many(self, texts: list[str]) -> list[Prediction]:
         if not texts:
             return []
-        classes = list(self._pipeline.classes_)
-        return [self._decide(row, classes)
-                for row in self._pipeline.predict_proba(texts)]
+        classes = list(self._screen.classes_)
+        screen_probas = self._screen.predict_proba(texts)
+
+        # Categorize only what survives the screen, and only if that job was
+        # earned — one batched call rather than one per sentence.
+        survivors = [i for i, row in enumerate(screen_probas)
+                     if self._p_none(row, classes) < self.none_threshold]
+        categories: dict[int, str] = {}
+        if survivors and self.can_categorize and self._category is not None:
+            predicted = self._category.predict([texts[i] for i in survivors])
+            categories = dict(zip(survivors, (str(c) for c in predicted)))
+
+        out: list[Prediction] = []
+        for i, row in enumerate(screen_probas):
+            p_none = round(self._p_none(row, classes), 4)
+            if i not in set(survivors):
+                out.append(Prediction(False, "none", p_none, "model", p_none))
+            else:
+                out.append(Prediction(
+                    is_requirement=True,
+                    category=categories.get(i, ""),
+                    confidence=round(1.0 - p_none, 4),
+                    method="model",
+                    p_none=p_none,
+                ))
+        return out
 
 
 _cache: dict[str, Optional[RequirementClassifier]] = {}
@@ -172,32 +186,59 @@ def reset_cache() -> None:
     _cache.clear()
 
 
-def build_pipeline():
-    """The estimator. Word + character n-grams, because solicitation language
-    is distinguished as much by morphology ('shall', '-point', 'not to
-    exceed') as by vocabulary, and character n-grams survive the OCR damage
-    this corpus routinely carries."""
-    from sklearn.calibration import CalibratedClassifierCV
+def _features():
+    """Word + character n-grams. Solicitation language is distinguished as much
+    by morphology ('shall', '12-point', 'not to exceed') as by vocabulary, and
+    character n-grams survive the OCR damage this corpus routinely carries."""
     from sklearn.feature_extraction.text import TfidfVectorizer
-    from sklearn.linear_model import LogisticRegression
-    from sklearn.pipeline import Pipeline, make_union
+    from sklearn.pipeline import make_union
 
-    features = make_union(
+    return make_union(
         TfidfVectorizer(ngram_range=(1, 2), min_df=1, sublinear_tf=True,
                         strip_accents="unicode", lowercase=True),
         TfidfVectorizer(analyzer="char_wb", ngram_range=(3, 5), min_df=2,
                         sublinear_tf=True, lowercase=True),
     )
+
+
+def _estimator(C: float):
+    from sklearn.calibration import CalibratedClassifierCV
+    from sklearn.linear_model import LogisticRegression
+
     # class_weight balanced: "none" dominates any real solicitation, and an
-    # unweighted fit buys accuracy by predicting it — which is precisely the
-    # failure mode (missed requirements) the gate exists to prevent.
-    return Pipeline([
-        ("features", features),
-        ("clf", CalibratedClassifierCV(
-            LogisticRegression(max_iter=2000, class_weight="balanced", C=4.0),
-            cv=3, method="sigmoid",
-        )),
-    ])
+    # unweighted fit buys accuracy by predicting it — precisely the failure
+    # mode (missed requirements) the screen gate exists to prevent.
+    return CalibratedClassifierCV(
+        LogisticRegression(max_iter=2000, class_weight="balanced", C=C),
+        cv=3, method="sigmoid",
+    )
+
+
+def build_screen_pipeline():
+    """Requirement vs not. Binary, because that is the decision it makes."""
+    from sklearn.pipeline import Pipeline
+
+    return Pipeline([("features", _features()), ("clf", _estimator(4.0))])
+
+
+def build_category_pipeline():
+    """Which of the four kinds — trained on REQUIREMENTS ONLY.
+
+    The first version was one flat 5-way model, and it read format
+    requirements as content or evaluation about as often as it got them right
+    (21 of 53 on held-out families). "none" is the overwhelming majority class
+    in any solicitation, so a joint model spends its capacity separating
+    requirements from boilerplate and has little left for the much subtler
+    distinction between a page limit and a staffing narrative. Splitting the
+    two jobs lets each fit the decision it actually makes.
+    """
+    from sklearn.pipeline import Pipeline
+
+    return Pipeline([("features", _features()), ("clf", _estimator(8.0))])
+
+
+# Kept as the screen builder's name for callers that only need one model.
+build_pipeline = build_screen_pipeline
 
 
 def categories() -> tuple[str, ...]:

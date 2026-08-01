@@ -42,14 +42,48 @@ class MissedCandidate:
         return f"({self.doc}) {self.text}"
 
 
+# A line that does not end in terminal punctuation is a wrapped continuation,
+# not a sentence. PDF and DOCX extraction wraps constantly, so splitting on
+# newlines alone turns one requirement into several fragments -- each too short
+# to classify and none of them quotable as verbatim binding language.
+_ENDS_SENTENCE = re.compile(r"[.!?:;]\s*$")
+# Blank lines, bullets, numbered headings and ALL-CAPS headers start something
+# new even when the previous line did not terminate.
+_STARTS_BLOCK = re.compile(
+    r"^\s*(?:[-*\u2022]|\(?[a-z0-9]{1,3}[.)]\s|[A-Z][A-Z \t]{6,}$|SECTION\b|ATTACHMENT\b)",
+)
+
+
+def _unwrap(text: str) -> list[str]:
+    """Rejoin lines that a renderer wrapped mid-sentence."""
+    blocks: list[str] = []
+    current = ""
+    for raw in text.splitlines():
+        line = " ".join(raw.split())
+        if not line:
+            if current:
+                blocks.append(current)
+                current = ""
+            continue
+        if current and not _STARTS_BLOCK.match(raw):
+            current = f"{current} {line}"
+        else:
+            if current:
+                blocks.append(current)
+            current = line
+        if _ENDS_SENTENCE.search(current):
+            blocks.append(current)
+            current = ""
+    if current:
+        blocks.append(current)
+    return blocks
+
+
 def split_sentences(text: str) -> list[str]:
     if not text:
         return []
     out: list[str] = []
-    for line in text.splitlines():
-        line = " ".join(line.split())
-        if not line:
-            continue
+    for line in _unwrap(text):
         start = 0
         for match in _SENTENCE_END.finditer(line):
             piece = line[start:match.end()].strip()

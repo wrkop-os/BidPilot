@@ -83,10 +83,18 @@ class _OutlineAndConstraints(BaseModel):
 def shred(router: ModelRouter, doc_tree: DocTree) -> ComplianceMatrix:
     # Pass 1 — overlapping-window extraction, per document.
     raw: list[Requirement] = []
+    from ..ml.prefilter import prefilter_text
+
     for doc in doc_tree.docs:
         text = doc.full_text
         if not text.strip():
             continue
+        # Opt-in cost lever (BIDPILOT_REQ_PREFILTER=1): drop sentences the
+        # domain model is confident bind nobody, before they are windowed.
+        # No-op by default -- invariant 4 prefers recall over cost here.
+        filtered = prefilter_text(text)
+        if filtered.dropped_sentences:
+            text = filtered.text
         for start in _window_starts(len(text)):
             window = text[start : start + WINDOW_CHARS]
             result = router.structured(

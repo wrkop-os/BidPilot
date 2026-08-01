@@ -4,8 +4,10 @@ Code: `bidpilot/ml/corpus.py`, `requirements_model.py`, `train_requirements.py`,
 `recall_net.py`. Train it with:
 
 ```bash
-python -m bidpilot.ml.train_requirements --out models/requirements.joblib
+bidpilot model train                      # writes models/requirements.joblib
 export BIDPILOT_REQ_MODEL=models/requirements.joblib
+bidpilot model status                     # what it earned, and how it was measured
+bidpilot model try "The offeror shall submit a subcontracting plan."
 ```
 
 Training takes about 15 seconds on 4 CPUs and is deterministic, so the artifact
@@ -61,25 +63,29 @@ Local, in-process, deterministic, free. No network.
 
 ## Measured results
 
-Trained on 412 sentences across 53 template families:
+Trained on 598 sentences across 78 template families. Every figure below is the
+**worst of six family splits**, not one:
 
-| Metric | Held-out families | Independent gold |
-|---|---:|---:|
-| Requirement recall | **0.991** | 1.000 |
-| Requirement precision | 0.912 | — |
-| Category accuracy | 0.648 | 0.875 |
-| Non-requirement text screened out | 56.5% | — |
+| Metric | Held-out (worst of 6) | Mean | Independent gold |
+|---|---:|---:|---:|
+| Requirement recall | **0.991** | 0.997 | 1.000 |
+| Requirement precision | 0.851 | — | — |
+| Category accuracy | 0.670 | 0.808 | 1.000 |
+| Non-requirement text identified | 50% | — | — |
 
 **Held-out families** are entire sub-topics the model never saw in training.
 **Independent gold** is `evals/corpus_demo/gold_matrix.csv` — eight rows written
 by hand for the eval harness, before this corpus existed and by a different
 process.
 
-The model was promoted **for screening only**. Category accuracy of 0.648 did
-not clear its 0.80 gate, so categorization stays with the LLM. That is two
-separate promotion decisions, not a lowered bar: `ships_screen` and
-`ships_categorize` are independent flags, each earned against a gate declared
-before training.
+The model is promoted **for screening only**. Category accuracy of 0.670 on the
+worst split did not clear its 0.80 gate — note that the *mean* (0.808) would
+have cleared it, which is precisely why the gate is on the worst split.
+Categorization stays with the LLM.
+
+`ships_screen` and `ships_categorize` are independent flags, each earned against
+a gate declared before training. Passing one and failing the other is a narrower
+job, not a lowered bar.
 
 ## Three things that make the numbers mean something
 
@@ -94,12 +100,17 @@ was more domain coverage: 25 families became 53.
 **The operating point is cross-validated, and conservative.** The serving rule
 is not argmax — a sentence is dropped only when `P(none)` clears a threshold.
 That threshold is chosen on train-side families across five folds, and the
-**most conservative** fold wins. The per-fold values were
-`[0.35, 0.5, 0.65, 0.6, 0.7]`; a single split picked 0.35 and held-out recall
-came in at 0.895, under the gate. Taking the maximum gives 0.7 and recall 0.991.
-The errors are wildly asymmetric — a sentence wrongly kept costs the LLM one
-more line to read; a sentence wrongly dropped is a requirement that never
-reaches the compliance matrix.
+**most conservative** fold wins. A single split once picked 0.35 and held-out
+recall came in at 0.895, under the gate. The errors are wildly asymmetric — a
+sentence wrongly kept costs the LLM one more line to read; a sentence wrongly
+dropped is a requirement that never reaches the compliance matrix.
+
+**The gate itself is measured across six splits, and reports the worst.** This
+is not belt-and-braces; it changed the answer. Measured across seeds, this
+corpus ranged **0.884–1.000** on recall and **0.698–0.871** on category
+accuracy. An earlier version of this model was promoted for *both* jobs off a
+single split — and would have shipped a categorizer that was right two times in
+three on the unlucky seed.
 
 **Evaluation uses the rule that actually serves.** Scoring with argmax would
 measure a decision procedure the product does not use.
@@ -127,6 +138,18 @@ runs to shift the balance:
 python -m bidpilot.ml.train_requirements --runs runs --out models/requirements.joblib
 ```
 
+## Two flavors of "format", and why that mattered
+
+Format requirements come in two distinct flavors: **presentational mechanics**
+(fonts, file types, naming, tabs, headers) and **extent limits** (page counts,
+copy counts, word counts, file size). The first corpus covered only mechanics.
+When the split held out the extent families, the model read page limits as
+`content` or `evaluation` and scored 26/53 on format — because nothing in
+training told it that "not to exceed 20 pages" was a format requirement at all.
+
+Seven extent families later, format generalizes. This is the concrete shape
+domain coverage takes: not more sentences, but more of the *concept*.
+
 ## How it is wired in
 
 As a **recall net**, not a filter. After the shredder finishes, the model
@@ -140,10 +163,25 @@ a 0.99-recall screen as a pre-filter would save tokens while silently
 discarding roughly one requirement in a hundred. Invariant 4 points the other
 way, and the arithmetic never favors trading recall for tokens on this stage.
 
-The 56.5% screening figure is therefore a measured property, not a live cost
-saving. It becomes one only if a future operating point is proven safe on
-captured data — a decision that needs real solicitations behind it, not the
-seed corpus.
+The screening figure is therefore a measured property, not a live cost saving
+by default.
+
+### The cost lever, if you want it
+
+`BIDPILOT_REQ_PREFILTER=1` runs the model in the other direction: sentences it
+is confident bind nobody are dropped *before* windowing, so the LLM never reads
+them. On a representative solicitation this cuts the shredded text by about
+40%.
+
+It is off by default and should stay off unless you have decided otherwise with
+the number in front of you. At the promoted operating point, worst-split recall
+is 0.991 — roughly **nine requirements in every thousand dropped before any
+model sees them**, unrecoverable downstream because the text never arrives.
+`bidpilot model status` prints that figure whenever the lever is on.
+
+Two safeguards make the trade survivable rather than reckless: only confident
+drops are made, at the same threshold the record was measured at; and dropped
+text is sampled into the result so a reviewer can see what went.
 
 ## Serving discipline
 
@@ -179,6 +217,16 @@ already exists — it is the MLE loop, and it has been waiting for data:
 The gap is data, not code. A useful fine-tune needs on the order of thousands of
 reviewed examples, which means real runs with real reviewers — the loop in step
 2 is how you accumulate them.
+
+## Text as it actually arrives
+
+Solicitations reach the model through PDF and DOCX extraction, which wraps
+lines mid-sentence. Splitting on newlines alone turned one requirement into
+several fragments — each too short to classify, and none quotable as verbatim
+binding language. The splitter now rejoins wrapped continuations while still
+respecting blank lines, bullets, numbered sub-paragraphs, and ALL-CAPS headings
+as genuine block boundaries. Clause numbers (`52.222-43`) and abbreviations
+(`Sec.`, `No.`) do not end sentences.
 
 ## Retraining
 

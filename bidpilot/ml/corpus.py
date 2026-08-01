@@ -366,7 +366,153 @@ _TEMPLATES: list[tuple[str, str, list[str]]] = [
         "The Government makes no guarantee regarding future workload volumes.",
         "This information is provided to assist offerors in preparing their proposals.",
     ]),
+
+    # ---- format: EXTENT limits -------------------------------------------
+    # Format requirements come in two flavors, and the first version of this
+    # corpus only covered one. Everything above constrains presentational
+    # mechanics (fonts, files, naming, tabs); these constrain how MUCH may be
+    # submitted. Holding out the extent families removed the whole flavor and
+    # the model read page limits as content or evaluation.
+    ("resume-limits", "format", [
+        "Resumes shall not exceed {n} pages per individual.",
+        "Each resume is limited to {n} pages, single-sided.",
+        "Key personnel resumes are limited to {n} pages and are excluded from the volume page count.",
+    ]),
+    ("appendix-limits", "format", [
+        "Appendices shall not exceed {n} pages in total.",
+        "Attachments are limited to {n} pages and shall contain no narrative.",
+        "The appendix may not be used to extend the technical narrative.",
+    ]),
+    ("slide-limits", "format", [
+        "Oral presentation slides shall not exceed {n} slides.",
+        "The briefing shall be limited to {n} charts, excluding the title slide.",
+        "Slides shall be submitted in PowerPoint and shall not exceed {n} pages when printed.",
+    ]),
+    ("word-limits", "format", [
+        "The executive summary shall not exceed {n} words.",
+        "Responses to each question are limited to {n} words.",
+        "Each past performance narrative shall not exceed {n} words.",
+    ]),
+    ("section-length", "format", [
+        "Section {sec} of the technical volume shall not exceed {n} pages.",
+        "No single subfactor response may exceed {n} pages.",
+        "The management approach is limited to {n} pages within the {n} page volume.",
+    ]),
+    ("submission-size", "format", [
+        "The complete submission shall not exceed {n} megabytes.",
+        "Total upload size is limited to {n} MB across all files.",
+        "Offerors shall split submissions exceeding {n} megabytes into multiple uploads.",
+    ]),
+    ("exhibit-limits", "format", [
+        "Exhibits are limited to {n} per volume.",
+        "The offeror may include no more than {n} figures in the technical volume.",
+        "Tables in excess of {n} will not be evaluated.",
+    ]),
+
+    # ---- evaluation: broader coverage ---------------------------------------
+    # This was the thinnest class in the corpus and its metric swung hardest
+    # when families were held out. Evaluation language is its own register:
+    # the GOVERNMENT is the actor, and the verbs are assess, evaluate,
+    # consider, rate -- not "shall submit".
+    ("eval-basis-of-award", "evaluation", [
+        "Award will be made on a lowest price technically acceptable basis.",
+        "The Government will award to the responsible offeror whose proposal is most advantageous.",
+        "This is a best value tradeoff acquisition under FAR 15.101-1.",
+        "The Government reserves the right to award without discussions.",
+    ]),
+    ("eval-technical-acceptability", "evaluation", [
+        "Proposals will be evaluated for compliance with the requirements of Section {sec}.",
+        "A proposal that fails to meet a material requirement will be rated unacceptable.",
+        "The Government will determine whether the proposed approach is technically acceptable.",
+    ]),
+    ("eval-price-realism", "evaluation", [
+        "The Government will perform a price realism analysis on proposed labor rates.",
+        "Proposed costs will be evaluated for realism in relation to the technical approach.",
+        "A price that is unrealistically low may indicate a lack of understanding of the requirement.",
+    ]),
+    ("eval-relevancy", "evaluation", [
+        "Relevancy will be assessed based on similarity of scope, magnitude, and complexity.",
+        "The Government will consider contracts of similar dollar value in assessing relevancy.",
+        "More relevant past performance will be given greater weight.",
+    ]),
+    ("eval-key-personnel", "evaluation", [
+        "The Government will evaluate whether proposed key personnel meet the stated qualifications.",
+        "Resumes will be assessed for depth of relevant experience.",
+        "The Government will consider the availability and commitment of proposed staff.",
+    ]),
+    ("eval-transition", "evaluation", [
+        "The Government will evaluate the feasibility of the proposed transition approach.",
+        "Transition risk will be assessed as part of the management factor.",
+        "The Government will consider the offeror's plan for uninterrupted service.",
+    ]),
+    ("eval-clarifications", "evaluation", [
+        "The Government may seek clarifications without opening discussions.",
+        "If discussions are held, offerors in the competitive range will receive evaluation notices.",
+        "The Government may establish a competitive range in accordance with FAR 15.306.",
+    ]),
+
+    # ---- none: more of the majority class -----------------------------------
+    ("scope-narrative", "none", [
+        "The contractor will support approximately {n} users across the enterprise.",
+        "The environment consists of {n} servers and associated network infrastructure.",
+        "Service levels are described in the Performance Requirements Summary.",
+        "Workload has grown approximately {n} percent annually.",
+    ]),
+    ("admin-context", "none", [
+        "This solicitation is issued under the authority of FAR Part 12.",
+        "The resulting contract will be a firm fixed price contract.",
+        "The Government contemplates award of a single indefinite delivery contract.",
+        "Option periods may be exercised at the sole discretion of the Government.",
+    ]),
+    ("attachment-listing", "none", [
+        "Attachment {n} contains the Performance Work Statement.",
+        "The wage determination is provided as Attachment {n}.",
+        "A list of Government furnished equipment appears in Attachment {n}.",
+        "The pricing template is provided as a separate Excel workbook.",
+    ]),
+    ("dates-informational", "none", [
+        "The anticipated award date is {date}.",
+        "The Government expects to complete evaluations by {date}.",
+        "The estimated start of performance is {date}.",
+    ]),
+
+    # ---- content: more coverage ---------------------------------------------
+    ("phase-in-staffing", "content", [
+        "The offeror shall describe how it will achieve full staffing by the end of phase-in.",
+        "Describe the approach to hiring incumbent personnel, if any.",
+        "Provide the proposed staffing ramp by month during transition.",
+    ]),
+    ("reporting-deliverables", "content", [
+        "The offeror shall describe its approach to producing the deliverables in the CDRL.",
+        "Describe the proposed monthly status report content and format.",
+        "The offeror shall identify the tools used to track and report performance metrics.",
+    ]),
+    ("surge-support", "content", [
+        "The offeror shall describe its ability to provide surge support on short notice.",
+        "Describe the approach to scaling staff for periods of increased demand.",
+        "The offeror shall explain how surge requests will be staffed within {n} days.",
+    ]),
+    ("innovation-approach", "content", [
+        "The offeror shall describe any process improvements it proposes to introduce.",
+        "Describe proposed automation that will reduce manual effort over the period of performance.",
+    ]),
+
+    # ---- administrative: more coverage --------------------------------------
+    ("small-business-rep", "administrative", [
+        "The offeror shall represent its size status under NAICS {naics}.",
+        "Offerors shall complete the small business representation in Section K.",
+        "The offeror shall certify that it qualifies as a small business concern.",
+    ]),
+    ("conflict-of-interest", "administrative", [
+        "The offeror shall disclose any actual or potential organizational conflict of interest.",
+        "Offerors shall submit an OCI mitigation plan if a conflict is identified.",
+    ]),
+    ("insurance-bonding", "administrative", [
+        "The offeror shall provide evidence of insurance prior to award.",
+        "The successful offeror shall furnish a performance bond within {n} days of award.",
+    ]),
 ]
+
 
 
 SLOTS: dict[str, list[str]] = {
